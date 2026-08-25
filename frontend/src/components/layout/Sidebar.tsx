@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import { Activity, Database, Plus, Search, Settings2, Trash2 } from 'lucide-react'
 import { api, getUsername } from '@/lib/api'
+import { cancelRunningStream } from '@/hooks/useChat'
 import { useChatStore } from '@/store/chatStore'
 import type { Message, SessionInfo } from '@/types/message'
 
@@ -37,6 +38,7 @@ export function Sidebar() {
   }, [setSessions])
 
   const createSession = async () => {
+    cancelRunningStream() // 切换会话前取消进行中的 SSE（CLAUDE.md 5.4）
     try {
       const s = await api.post<SessionInfo>('/sessions', { title: '新对话' })
       setSessions([s, ...sessions])
@@ -48,6 +50,7 @@ export function Sidebar() {
   }
 
   const select = async (id: string) => {
+    cancelRunningStream() // 切换会话前取消进行中的 SSE（CLAUDE.md 5.4）
     setSessionId(id)
     try {
       const msgs = await api.get<Message[]>(`/sessions/${id}/messages`)
@@ -58,6 +61,7 @@ export function Sidebar() {
   }
 
   const remove = async (id: string) => {
+    cancelRunningStream()
     try {
       await api.post('/sessions/delete', { id })
       setSessions(sessions.filter((x) => x.id !== id))
@@ -113,8 +117,10 @@ export function Sidebar() {
             <div
               key={s.id}
               onClick={() => select(s.id)}
-              className={`group flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 text-[13px] ${
-                active ? 'bg-primary text-primary-foreground' : 'text-foreground hover:bg-accent'
+              className={`group flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 text-[13px] transition-colors ${
+                active
+                  ? 'bg-sidebar-active font-medium text-sidebar-active-foreground'
+                  : 'text-foreground hover:bg-sidebar-accent'
               }`}
             >
               <span className="flex-1 truncate">{s.title}</span>
@@ -124,9 +130,7 @@ export function Sidebar() {
                   remove(s.id)
                 }}
                 aria-label="删除会话"
-                className={`flex size-[22px] items-center justify-center rounded-[4px] opacity-0 transition-opacity group-hover:opacity-60 hover:opacity-100! ${
-                  active ? 'hover:bg-white/15' : 'hover:bg-black/5'
-                }`}
+                className="flex size-[22px] items-center justify-center rounded-[4px] opacity-0 transition-opacity hover:bg-black/5 group-hover:opacity-60 hover:opacity-100!"
               >
                 <Trash2 size={13} />
               </button>

@@ -2,17 +2,16 @@
 
 执行器签名：`async def (params: dict, ctx: ExecCtx) -> dict`
 - ctx.is_cancelled() -> 周期性调用，返回 True 表示已被取消（抛 TaskCancelled 中断）。
-- ctx.update_progress(percent, current_step) -> 推送进度（DB + Redis Pub/Sub）。
+- ctx.progress(percent, current_step) -> 推送进度（由 Worker 注入回调：DB progress + Redis 广播）。
 
 M2/M3 将注册：query（Agent 生成/执行）、file_parse（附件解析）等类型。
 """
 import asyncio
-import logging
 from typing import Awaitable, Callable
 
-logger = logging.getLogger("datapilot.executors")
-
 EXECUTORS: dict[str, Callable[[dict, "ExecCtx"], Awaitable[dict]]] = {}
+
+ProgressCb = Callable[[int, "str | None"], Awaitable[None]]
 
 
 class TaskCancelled(Exception):
@@ -22,9 +21,15 @@ class TaskCancelled(Exception):
 
 
 class ExecCtx:
-    def __init__(self, task_id: str, is_cancelled: Callable[[], Awaitable[bool]] | None = None):
+    def __init__(
+        self,
+        task_id: str,
+        is_cancelled: Callable[[], Awaitable[bool]] | None = None,
+        on_progress: ProgressCb | None = None,
+    ):
         self.task_id = task_id
         self._is_cancelled = is_cancelled
+        self._on_progress = on_progress
 
     async def is_cancelled(self) -> bool:
         if self._is_cancelled is None:
@@ -32,7 +37,9 @@ class ExecCtx:
         return await self._is_cancelled()
 
     async def progress(self, percent: int, current_step: str | None = None) -> None:
-        logger.info("task progress", task_id=self.task_id, percent=percent, step=current_step)
+        """推进进度；Worker 注入回调后同时落 DB 并广播 SSE。"""
+        if self._on_progress is not None:
+            await self._on_progress(percent, current_step)
 
 
 async def _probe(params: dict, ctx: ExecCtx) -> dict:

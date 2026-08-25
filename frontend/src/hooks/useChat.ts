@@ -5,6 +5,14 @@ import type { SSEFrame } from '@/lib/sseClient'
 import { useChatStore } from '@/store/chatStore'
 import type { Block, BlockType, Message } from '@/types/message'
 
+let activeController: AbortController | null = null
+
+/** 取消进行中的 SSE 流（会话切换 / 登出时调用，协议要求见 CLAUDE.md 5.4） */
+export function cancelRunningStream(): void {
+  activeController?.abort()
+  activeController = null
+}
+
 function uid(): string {
   return crypto.randomUUID()
 }
@@ -118,10 +126,16 @@ export function useChat() {
       }
     }
 
+    const ctrl = new AbortController()
+    activeController?.abort()
+    activeController = ctrl
+
     try {
       await streamSSE(
         `${API_BASE}/chat/stream`,
-        { session_id: sessionId, message: text },
+        // text_block_id：客户端预置的流式文本容器，服务端 token 事件据此定位。
+        // （mock 环境由 lib/mock 消费；正式后端 M2 对齐时按此契约实现）
+        { session_id: sessionId, message: text, text_block_id: textBlockId },
         {
           onEvent: applyFrame,
           onError: (err) => {
@@ -134,10 +148,13 @@ export function useChat() {
             s.setSending(false)
           },
         },
+        ctrl.signal,
       )
       useChatStore.getState().setSending(false)
     } catch {
       useChatStore.getState().setSending(false)
+    } finally {
+      if (activeController === ctrl) activeController = null
     }
   }, [])
 

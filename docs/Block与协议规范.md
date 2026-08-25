@@ -103,7 +103,7 @@ interface TableContent {
 
 ### 2.4 chart
 
-存储**结构化数据**而非 ECharts option——图表库细节留在前端，后端只描述"数据与语义"，同时保证导出与重新渲染的一致性。
+存储**结构化数据**而非图表库 option——图表库细节留在前端（M4 落地为 recharts / shadcn Chart），后端只描述"数据与语义"，同时保证导出与重新渲染的一致性。
 
 ```typescript
 interface ChartSeries {
@@ -468,7 +468,7 @@ data: <JSON 载荷>
 | text | TextBlock（react-markdown） | 复制 |
 | code | CodeBlock（Monaco） | 编辑 / 执行 / 复制 |
 | table | TableBlock（@tanstack/react-virtual） | 排序、筛选、分页、导出、复制、溯源 |
-| chart | ChartBlock（ECharts） | 悬停提示、缩放、导出 PNG/SVG/PDF |
+| chart | ChartBlock（recharts / shadcn Chart） | 悬停提示、缩放、导出 PNG/SVG/PDF |
 | confirmation | ConfirmationBlock | 确认 / 取消 |
 | insights | InsightsBlock | 无 |
 | suggestions | SuggestionBlock | 点击发送 message |

@@ -161,7 +161,7 @@ class ConfigService:
         provider = (provider_cfg.get("provider") or "openai").lower()
         cred_key = f"llm.{provider}"
         creds = all_cfg.get(cred_key) or dict(DEFAULT_CONFIGS.get(cred_key, ("", {}))[1])
-        merged = {**provider_cfg, "provider": provider}
+        merged = {**provider_cfg, **creds, "provider": provider}
         for field in SECRET_FIELDS.get(cred_key, ()):
             raw = creds.get(field)
             merged[field] = decrypt_secret(raw) if isinstance(raw, str) else ""

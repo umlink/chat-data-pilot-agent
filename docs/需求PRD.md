@@ -437,7 +437,7 @@ AI 返回: [
 |------|------|------|
 | 前端框架 | Vite + React 18 + TypeScript | 轻量快速，类型安全 |
 | UI 组件 | shadcn/ui (Base UI) + Tailwind CSS | 可控、现代、轻量 |
-| 图表 | ECharts | 功能全、中文友好 |
+| 图表 | recharts（shadcn/ui Chart） | React 原生、轻量、可吃设计 token |
 | 代码编辑 | Monaco Editor | SQL / Python 编辑 |
 | 状态管理 | Zustand | 轻量 |
 | 后端框架 | FastAPI (Python 3.11) | 异步、类型安全、自动文档 |
@@ -618,7 +618,7 @@ src/
 │   │   │   ├── TextBlock.tsx
 │   │   │   ├── CodeBlock.tsx        # Monaco Editor
 │   │   │   ├── TableBlock.tsx       # 虚拟表格
-│   │   │   ├── ChartBlock.tsx       # ECharts
+│   │   │   ├── ChartBlock.tsx       # recharts
 │   │   │   ├── ConfirmationBlock.tsx
 │   │   │   ├── ProgressBlock.tsx
 │   │   │   ├── SuggestionBlock.tsx
@@ -651,7 +651,7 @@ src/
 - 注册表模式，通过 `type` 字段动态渲染
 - CodeBlock：默认只读，点击编辑切换 Monaco Editor，运行触发自定义事件
 - TableBlock：`@tanstack/react-virtual` 虚拟滚动，支持 10 万行
-- ChartBlock：封装 ECharts，支持 PNG/SVG/PDF 导出
+- ChartBlock：封装 recharts，支持 PNG/SVG/PDF 导出
 - 每种 Block 有独立状态管理和交互逻辑
 
 ### 8.3 SSE 客户端

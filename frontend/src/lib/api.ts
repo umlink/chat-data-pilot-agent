@@ -1,7 +1,11 @@
 /**
  * API 客户端。统一响应格式 { code, data, message }（docs/技术方案设计 2.3）。
  * 非 0 的 code 或非 2xx 均抛 ApiError。
+ * VITE_USE_MOCK=true 时先路由到 src/lib/mock（见 mock/index.ts）。
  */
+import { USE_MOCK, mockRequest } from '@/lib/mock'
+
+export { USE_MOCK }
 
 export const API_BASE: string = import.meta.env.VITE_API_BASE ?? '/api'
 const TOKEN_KEY = 'datapilot_token'
@@ -54,6 +58,13 @@ interface RequestOptions {
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { method = 'GET', body, signal, auth = true } = options
+
+  // Mock 模式：命中则直接返回模拟数据；未命中回落到真实请求
+  if (USE_MOCK) {
+    const mocked = await mockRequest(path, method, body as Record<string, unknown> | undefined)
+    if (mocked !== undefined) return mocked as T
+  }
+
   const headers: Record<string, string> = { Accept: 'application/json' }
   if (body !== undefined) headers['Content-Type'] = 'application/json'
   if (auth) {

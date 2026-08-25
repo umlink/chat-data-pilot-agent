@@ -56,8 +56,10 @@
 | 层级 | 值 |
 |------|-----|
 | 间距 | 4 / 6 / 8 / 12 / 16 / 20 / 24 / 32（px） |
-| 圆角 | sm 6 / md 8 / lg 10 / xl 12 / full 9999 |
+| 圆角 | sm 7 / md 10 / lg 12 / xl 17 / full 9999（基准 `--radius: 0.75rem`） |
 | 阴影 | sm `0 1px 2px rgb(0 0 0 / .04)`；md `0 4px 12px rgb(0 0 0 / .06)`；lg `-8px 0 24px rgb(0 0 0 / .06)`（抽屉） |
+
+> 视觉语言基准（对齐参考设计系统）：**浅灰画布 + 纯白卡片浮起**。`--background` 为浅灰（oklch 0.98），`--card` / `--sidebar` / `--popover` 为纯白，卡片靠 border 与底色差分层，不依赖重阴影。bento 卡片网格用于配置/日志/概览等次级页面；对话主界面保持三栏垂直流（见第 2 章）。
 
 ---
 
@@ -112,7 +114,7 @@
 外层 `rounded-lg border overflow-hidden text-xs`；th：`bg-muted px-3 py-2 text-left text-[11px] uppercase tracking-wide text-muted-foreground`；td：`px-3 py-2 border-b`；末行去 border。脚注：`text-[11px]` 含「导出 CSV」下划线链接。正负增长用 `text-success` / `text-error`。
 
 ### 3.7 图表卡片
-`.card` + `p-4`；标题 `text-[13px] font-semibold`；柱状主色渐变橙 400→600；坐标轴 9px muted；图例 11px。M4 由 ECharts 渲染，颜色取 `--chart-1..5`。
+`.card` + `p-4`；标题 `text-[13px] font-semibold`；柱状主色渐变橙 400→600；坐标轴 9px muted；图例 11px。M4 由 recharts（shadcn/ui Chart 封装）渲染，颜色取 `--chart-1..5`。
 
 ### 3.8 引用卡 `.quote-card`
 `bg-muted border-l-4 border-primary rounded-md p-3 text-sm leading-[1.6]`（用于「用户输入」回显、澄清说明）。

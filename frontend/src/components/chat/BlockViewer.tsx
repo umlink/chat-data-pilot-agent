@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react'
 import type {
   ChartContent,
   CodeExecution,
@@ -10,9 +11,28 @@ import type {
 } from '@/types/message'
 import type { Block } from '@/types/message'
 
+// ChartBlock（recharts ~120KB gzip）仅在出现 chart block 时懒加载
+const ChartBlock = lazy(() =>
+  import('./ChartBlock').then((m) => ({ default: m.ChartBlock })),
+)
+
+function ChartSkeleton() {
+  return (
+    <div className="flex h-56 w-full items-end justify-center gap-2 rounded-md bg-muted/30 px-6 pb-4">
+      {[0.4, 0.65, 0.5, 0.8, 0.95, 0.75, 0.6, 0.5].map((h, i) => (
+        <div
+          key={i}
+          className="w-8 animate-pulse rounded-t bg-muted"
+          style={{ height: `${h * 100}%` }}
+        />
+      ))}
+    </div>
+  )
+}
+
 /**
  * Block 渲染（docs/UI设计规范.md 4 与 docs/Block与协议规范.md 第 2 章）。
- * chart / attachment / 交互动作在 M4 / M2 逐步替换为专业组件。
+ * attachment / confirmation 交互动作在 M2 / M4 逐步替换为专业组件。
  */
 export function BlockViewer({ block }: { block: Block }) {
   const c = block.content
@@ -46,7 +66,7 @@ export function BlockViewer({ block }: { block: Block }) {
       const content = c as unknown as TableContent
       const rows = content.rows ?? []
       return (
-        <div className="overflow-hidden rounded-lg border">
+        <div className="overflow-hidden rounded-lg border bg-card shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
           <table className="w-full text-xs">
             <thead>
               <tr className="bg-muted">
@@ -85,14 +105,14 @@ export function BlockViewer({ block }: { block: Block }) {
     case 'chart': {
       const content = c as unknown as ChartContent
       return (
-        <div className="rounded-lg border bg-card">
+        <div className="rounded-lg border bg-card shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
           <div className="p-4">
             <div className="mb-3 text-[13px] font-semibold text-foreground">
               {content.title ?? '图表'}
             </div>
-            <div className="flex h-40 items-center justify-center rounded-md bg-muted/50 text-[13px] text-muted-foreground">
-              📊 {content.chart_type}（M4 ECharts 渲染）
-            </div>
+            <Suspense fallback={<ChartSkeleton />}>
+              <ChartBlock content={content} />
+            </Suspense>
           </div>
         </div>
       )

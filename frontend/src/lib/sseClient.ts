@@ -2,8 +2,10 @@
  * SSE 客户端（POST + fetch ReadableStream）。
  * 实现 docs/Block与协议规范.md 第 3 章：token / block_start / block_update /
  * block_end / task_status / error / done；id 单调递增；忽略注释（心跳）。
+ * VITE_USE_MOCK=true 时先路由到 lib/mock 的流式回放。
  */
 import { getToken } from '@/lib/api'
+import { USE_MOCK, mockStream } from '@/lib/mock'
 
 export interface SSEFrame {
   event: string
@@ -24,6 +26,12 @@ export async function streamSSE(
   cb: SSECallbacks,
   signal?: AbortSignal,
 ): Promise<void> {
+  // Mock 模式：已处理则短路；未命中回落到真实流
+  if (USE_MOCK) {
+    const handled = await mockStream(url, body, cb, signal)
+    if (handled) return
+  }
+
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     Accept: 'text/event-stream',
