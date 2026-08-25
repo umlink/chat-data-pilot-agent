@@ -16,12 +16,14 @@ from app.api.deps import get_current_user
 from app.models.user import User
 from app.schemas.common import ApiResponse
 from app.services.config_service import ConfigService, mask_all
+from app.services.log_service import LogService
 
 router = APIRouter(prefix="/config", tags=["config"])
 
 logger = logging.getLogger("datapilot.config")
 
 _config_service = ConfigService()
+_log_service = LogService()
 
 
 class ConfigUpdateRequest(BaseModel):
@@ -75,6 +77,13 @@ async def update_config(
     except KeyError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     data = await _config_service.get_all()
+    # 审计日志只记变更的配置 key 名，不记值（值可能含 API Key 等敏感字段）
+    await _log_service.audit(
+        user=user.username,
+        resource="config",
+        action="update",
+        message=f"配置变更: {','.join(req.updates.keys())}",
+    )
     return ApiResponse(data=mask_all(data), message="配置已更新")
 
 

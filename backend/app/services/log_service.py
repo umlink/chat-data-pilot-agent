@@ -77,7 +77,8 @@ class LogService:
             raise ValueError(f"日志级别非法: {level}，必须为 {'/'.join(LOG_LEVELS)}")
         if category not in LOG_CATEGORIES:
             raise ValueError(f"日志类别非法: {category}，必须为 {'/'.join(LOG_CATEGORIES)}")
-        ctx = dict(context or {})
+        # 请求上下文（request_id 等）自动并入，显式传入的字段优先
+        ctx = {**structlog.contextvars.get_contextvars(), **(context or {})}
         for field in _REQUIRED_CONTEXT.get(category, ()):
             if field not in ctx:
                 raise ValueError(f"{category} 类日志 context 缺少必带字段: {field}")

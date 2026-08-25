@@ -58,5 +58,17 @@ async def _probe(params: dict, ctx: ExecCtx) -> dict:
 EXECUTORS["probe"] = _probe
 
 
+def register_file_parse_executor() -> None:
+    """注册附件解析执行器。
+
+    不在模块级调用：attachment_service 顶层依赖本模块的 TaskCancelled，
+    模块级注册会形成 attachment_service → executors → attachment_service 循环。
+    由 Worker 启动路径（app/tasks/worker.py）显式调用。
+    """
+    from app.services.attachment_service import file_parse_executor
+
+    EXECUTORS.setdefault("file_parse", file_parse_executor)
+
+
 def get_executor(task_type: str):
     return EXECUTORS.get(task_type)

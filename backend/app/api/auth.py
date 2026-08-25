@@ -10,8 +10,11 @@ from app.core.database import get_db
 from app.core.security import create_access_token, hash_password, verify_password
 from app.models.user import User
 from app.schemas.common import ApiResponse
+from app.services.log_service import LogService
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+_log_service = LogService()
 
 
 class LoginRequest(BaseModel):
@@ -36,6 +39,9 @@ async def login(req: LoginRequest, db: Annotated[AsyncSession, Depends(get_db)])
     if user is None or not verify_password(req.password, user.password_hash):
         raise HTTPException(status_code=401, detail="用户名或密码错误")
     token = create_access_token(str(user.id))
+    await _log_service.info(
+        "application", "用户登录", user=req.username, resource="auth", action="login"
+    )
     return ApiResponse(data={"token": token, "user": UserInfo(id=str(user.id), username=user.username)})
 
 

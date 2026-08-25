@@ -1,12 +1,13 @@
 """对话 API（核心）。
 - POST /api/chat/stream    发起对话，SSE 流式返回（token/block_start/block_end/error/done）
 - POST /api/chat/feedback  消息点赞/点踩
-- POST /api/chat/execute   执行编辑后的 SQL / 确认卡片动作（待 Agent 工具集 #10 接入）
+- POST /api/chat/execute   确认卡片决策（confirm/cancel）与执行后续动作（Agent 工具集 #10）
 """
 import asyncio
 import json
 import logging
-from typing import Annotated
+import uuid
+from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -18,14 +19,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user
 from app.core.database import SessionFactory, get_db
 from app.models.user import Feedback, Message, Session, User
-from app.schemas.common import ApiResponse
+from app.schemas.common import ApiResponse, MessageRecord
 from app.services.chat_service import ChatService
+from app.services.sql_engine import SqlEngine, SqlRoutingError
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 logger = logging.getLogger("datapilot.chat")
 
 _chat_service = ChatService()
+_sql_engine = SqlEngine()
 
 HEARTBEAT_SECONDS = 15
 
@@ -42,6 +45,24 @@ class FeedbackRequest(BaseModel):
     message_id: str
     rating: int  # 1 / -1
     comment: str | None = None
+
+
+class ExecuteRequest(BaseModel):
+    block_id: str  # confirmation block id
+    decision: Literal["confirm", "cancel"]
+    sql: str | None = None  # 可选：编辑后的 SQL（覆盖确认卡片里的原 SQL）
+
+
+def _serialize_message(msg: Message) -> dict:
+    """消息序列化为 MessageRecord 形状（供前端整体刷新）。"""
+    return {
+        "id": str(msg.id),
+        "session_id": str(msg.session_id),
+        "role": msg.role,
+        "blocks": [b.dict() if hasattr(b, "dict") else b for b in (msg.blocks or [])],
+        "metadata": msg.metadata_ or {},
+        "created_at": msg.created_at.isoformat() if msg.created_at else None,
+    }
 
 
 def _sse(event: str, seq: int, data: dict) -> str:
@@ -75,6 +96,7 @@ async def chat_stream(
         agen = _chat_service.stream(
             session_id=req.session_id,
             user_text=req.message,
+            user_id=user.id,
             datasource_id=req.datasource_id,
             attachments=req.attachments,
         ).__aiter__()
@@ -137,10 +159,89 @@ async def chat_feedback(
     return ApiResponse(data=None, message="反馈已提交")
 
 
+async def _find_confirmation_message(
+    db: AsyncSession, user: User, block_id: str
+) -> tuple[Message, dict]:
+    """在归属当前用户的消息中定位 confirmation block（消息 → 会话 → 用户 归属校验）。"""
+    result = await db.execute(
+        select(Message)
+        .join(Session, Message.session_id == Session.id)
+        .where(Session.user_id == user.id)
+        .order_by(Message.created_at.desc())
+        .limit(50)
+    )
+    for msg in result.scalars().all():
+        for block in msg.blocks or []:
+            if block.get("id") == block_id and block.get("type") == "confirmation":
+                return msg, block
+    raise HTTPException(status_code=404, detail="确认卡片不存在或已处理")
+
+
 @router.post("/execute", response_model=ApiResponse)
 async def chat_execute(
-    req: dict,
+    req: ExecuteRequest,
     user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    # 编辑后执行 SQL / 确认卡片动作依赖 Agent 工具集与数据源引擎（#10 / M3）
-    raise HTTPException(status_code=501, detail="执行类动作将在 Agent 工具集接入后开放")
+    """确认卡片决策：cancel 直接标记拒绝；confirm 按 operation 执行并回填结果 block。
+
+    - execute_sql：用卡片上的 SQL（或前端编辑后的 req.sql）执行，允许写操作；
+      结果以 table block 追加到原消息，parent_block_id 关联回确认卡片。
+    - execute_python / delete_attachment / truncate_table：M3 附件引擎接入后支持。
+    """
+    msg, block = await _find_confirmation_message(db, user, req.block_id)
+    content = block["content"]
+    blocks = list(msg.blocks or [])
+    block_idx = blocks.index(block)
+
+    if req.decision == "cancel":
+        block["status"] = "rejected"
+        content["confirmed"] = False
+        msg.blocks = blocks
+        await db.commit()
+        return ApiResponse(data={"message": _serialize_message(msg)}, message="已取消操作")
+
+    # ---------- confirm ----------
+    operation = content.get("operation")
+    if operation == "execute_sql":
+        sql = (req.sql or "").strip() or (content.get("sql") or "").strip()
+        if not sql:
+            raise HTTPException(status_code=400, detail="SQL 为空，无法执行")
+        try:
+            table = await _sql_engine.execute(
+                user_id=user.id,
+                session_id=str(msg.session_id),
+                sql=sql,
+                max_rows=1000,
+                allow_write=True,
+            )
+        except SqlRoutingError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        except Exception as exc:
+            logger.exception("确认后 SQL 执行失败", extra={"block_id": req.block_id})
+            raise HTTPException(status_code=400, detail=f"SQL 执行失败：{exc}")
+        meta = table.pop("_meta", None)
+        result_block = {
+            "id": str(uuid.uuid4()),
+            "type": "table",
+            "status": "completed",
+            "content": table,
+            "parent_block_id": req.block_id,
+            "created_at": None,
+        }
+        content["confirmed"] = True
+        content["result_block_id"] = result_block["id"]
+        block["status"] = "completed"
+        blocks[block_idx] = block
+        blocks.append(result_block)
+        msg.blocks = blocks
+        await db.commit()
+        return ApiResponse(
+            data={"message": _serialize_message(msg), "result_block_id": result_block["id"]},
+            message=f"执行完成（{meta.get('duration_ms', 0)}ms）" if meta else "执行完成",
+        )
+
+    raise HTTPException(
+        status_code=400,
+        detail=f"确认类型 {operation} 待对应模块接入后开放（当前支持 execute_sql）",
+    )

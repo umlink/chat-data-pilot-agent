@@ -11,12 +11,20 @@ import json
 import logging
 
 from app.core.redis import get_redis
-from app.tasks.executors import ExecCtx, TaskCancelled, get_executor
+from app.tasks.executors import (
+    ExecCtx,
+    TaskCancelled,
+    get_executor,
+    register_file_parse_executor,
+)
 from app.tasks.queue import TaskQueue
 
 logger = logging.getLogger("datapilot.worker")
 
 CHANNEL_PREFIX = "task:"
+
+# 注册 M3 附件解析执行器（executors 模块级不注册，见该函数注释：避免循环导入）
+register_file_parse_executor()
 
 
 class Worker:
