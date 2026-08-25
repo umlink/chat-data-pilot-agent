@@ -1,25 +1,11 @@
-import type { ReactElement } from 'react'
 import { Navigate, createBrowserRouter } from 'react-router-dom'
-import { getToken } from '@/lib/api'
-import { Login } from '@/components/auth/Login'
 import { Placeholder } from '@/components/common/Placeholder'
 import { ChatArea } from '@/components/chat/ChatArea'
 import { AppShell } from '@/routers/AppShell'
-
-/** 已登录才可访问；未登录跳登录页 */
-function RequireAuth({ children }: { children: ReactElement }) {
-  if (!getToken()) return <Navigate to="/login" replace />
-  return children
-}
-
-/** 已登录访问登录页时直接回主界面 */
-function GuestOnly() {
-  if (getToken()) return <Navigate to="/" replace />
-  return <Login />
-}
+import { GuestOnly, RequireAuth } from '@/routers/guards'
 
 /**
- * 路由表（路由相关定义统一收敛在 src/routers/，docs/技术方案设计 前端部分）。
+ * 路由表（路由相关定义统一收敛在 src/routers/）。
  * 页面：
  *   /            对话分析（默认）
  *   /datasources 数据源管理
