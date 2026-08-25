@@ -1,0 +1,17 @@
+# 环境与密钥
+*.local
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+backend/data/
+
+# Node
+node_modules/
+frontend/dist/
+
+# IDE
+.idea/
+.vscode/
+.DS_Store

@@ -1,0 +1,260 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "@fontsource-variable/inter";
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --chart-1: oklch(0.837 0.128 66.29);
+  --chart-2: oklch(0.705 0.213 47.604);
+  --chart-3: oklch(0.646 0.222 41.116);
+  --chart-4: oklch(0.553 0.195 38.402);
+  --chart-5: oklch(0.47 0.157 37.304);
+  --radius: 0.625rem;
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+
+  /* ---- DataPilot 扩展语义令牌（docs/UI设计规范.md 1.1） ---- */
+  --state-success: oklch(0.62 0.19 145);
+  --state-success-bg: oklch(0.93 0.08 145);
+  --state-warning: oklch(0.75 0.18 75);
+  --state-warning-bg: oklch(0.95 0.06 80);
+  --state-error: oklch(0.577 0.245 27.325);
+  --state-error-bg: oklch(0.95 0.05 25);
+  --state-info: oklch(0.65 0.18 230);
+  --state-info-bg: oklch(0.94 0.05 230);
+  --code-bg: oklch(0.145 0 0);
+  --code-fg: oklch(0.92 0 0);
+  --code-header: oklch(0.205 0 0);
+  --code-border: oklch(0.27 0 0);
+  --code-lang-bg: oklch(0.25 0 0);
+  --code-lang-fg: oklch(0.7 0 0);
+  --user-bubble-bg: oklch(0.205 0 0);
+  --user-bubble-fg: oklch(0.985 0 0);
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+/* 细滚动条（规范 5） */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: oklch(0.88 0 0); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: oklch(0.78 0 0); }
+
+@theme inline {
+  --font-heading: var(--font-sans);
+  --font-sans: 'Inter Variable', sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+
+  /* DataPilot 语义令牌 → Tailwind 类 */
+  --color-success: var(--state-success);
+  --color-success-bg: var(--state-success-bg);
+  --color-warning: var(--state-warning);
+  --color-warning-bg: var(--state-warning-bg);
+  --color-error: var(--state-error);
+  --color-error-bg: var(--state-error-bg);
+  --color-info: var(--state-info);
+  --color-info-bg: var(--state-info-bg);
+  --color-code-bg: var(--code-bg);
+  --color-code-fg: var(--code-fg);
+  --color-code-header: var(--code-header);
+  --color-code-border: var(--code-border);
+  --color-code-lang-bg: var(--code-lang-bg);
+  --color-code-lang-fg: var(--code-lang-fg);
+  --color-user-bubble: var(--user-bubble-bg);
+  --color-user-bubble-fg: var(--user-bubble-fg);
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --chart-1: oklch(0.837 0.128 66.29);
+  --chart-2: oklch(0.705 0.213 47.604);
+  --chart-3: oklch(0.646 0.222 41.116);
+  --chart-4: oklch(0.553 0.195 38.402);
+  --chart-5: oklch(0.47 0.157 37.304);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
+}
+
+@layer components {
+  /* ---- 按钮（docs/UI设计规范.md 3.1） ---- */
+  .btn {
+    @apply inline-flex cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors;
+  }
+  .btn:focus-visible {
+    @apply outline-2 outline-offset-2 outline-ring;
+  }
+  .btn:disabled {
+    @apply cursor-not-allowed opacity-40;
+  }
+  .btn-primary {
+    @apply h-9 bg-primary px-4 text-primary-foreground;
+  }
+  .btn-primary:hover:not(:disabled) {
+    @apply bg-primary/90;
+  }
+  .btn-ghost {
+    @apply h-9 px-3 text-foreground hover:bg-accent;
+  }
+  .btn-sm {
+    @apply h-7 px-2.5 text-xs;
+  }
+  .btn-icon {
+    @apply size-9 p-0 text-foreground hover:bg-accent;
+  }
+  .btn-send {
+    @apply inline-flex size-[34px] items-center justify-center rounded-[10px] bg-primary text-primary-foreground transition-colors;
+  }
+  .btn-send:hover:not(:disabled) {
+    @apply bg-primary/90;
+  }
+
+  /* ---- 徽标（docs/UI设计规范.md 3.2） ---- */
+  .badge {
+    @apply inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium;
+  }
+  .badge-secondary {
+    @apply bg-secondary text-secondary-foreground;
+  }
+  .badge-success {
+    @apply bg-success-bg text-success;
+  }
+  .badge-outline {
+    @apply border text-foreground;
+  }
+
+  /* ---- 状态点（docs/UI设计规范.md 3.3） ---- */
+  .status-dot {
+    @apply inline-block size-2 shrink-0 rounded-full;
+  }
+  .status-dot.succeeded {
+    @apply bg-success;
+  }
+  .status-dot.running {
+    @apply bg-info;
+  }
+  .status-dot.queued {
+    @apply bg-muted-foreground/70;
+    animation: pulse-dot 1.4s ease-in-out infinite;
+  }
+
+  /* ---- 语法高亮（docs/UI设计规范.md 3.5） ---- */
+  .tok-keyword { color: oklch(0.78 0.15 280); }
+  .tok-string { color: oklch(0.75 0.18 145); }
+  .tok-number { color: oklch(0.8 0.16 75); }
+  .tok-comment { color: oklch(0.55 0 0); font-style: italic; }
+  .tok-func { color: oklch(0.72 0.14 220); }
+  .tok-builtin { color: oklch(0.78 0.15 50); }
+}
+
+/* ---- 动效（docs/UI设计规范.md 5） ---- */
+@keyframes pulse-dot { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
+@keyframes slide-in-right { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+.animate-pulse-dot { animation: pulse-dot 1.4s ease-in-out infinite; }
+.animate-slide-in-right { animation: slide-in-right 0.3s ease-out; }
+.animate-fade-in { animation: fade-in 0.2s ease-out; }
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  button:not(:disabled), [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+  html {
+    @apply font-sans;
+  }
+}

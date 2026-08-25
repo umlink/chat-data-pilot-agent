@@ -1,0 +1,35 @@
+# DataPilotAgent 应用层部署。
+# PostgreSQL / Redis / MinIO 使用远程实例，连接信息见根目录 .env。
+services:
+  backend:
+    build: ./backend
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${PG_USER}:${PG_PASSWORD}@${PG_HOST}:${PG_PORT}/${PG_DB}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@${REDIS_HOST}:${REDIS_PORT}/0
+      SECRET_KEY: change-me-in-prod
+      ENABLE_AUTH: "true"
+      OPENAI_API_KEY: ""
+      ANTHROPIC_API_KEY: ""
+    volumes:
+      - app_data:/app/data
+
+  frontend:
+    build: ./frontend
+    volumes:
+      - frontend_build:/app/dist
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - frontend_build:/usr/share/nginx/html:ro
+    depends_on:
+      - backend
+      - frontend
+
+volumes:
+  app_data:
+  frontend_build:
