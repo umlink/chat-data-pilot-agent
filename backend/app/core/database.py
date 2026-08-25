@@ -10,7 +10,8 @@ class Base(DeclarativeBase):
     pass
 
 
-engine = create_async_engine(settings.db_url, pool_pre_ping=True, echo=False)
+# 注意：asyncpg 下 pool_pre_ping 会触发 MissingGreenlet（本环境实测），远程连接稳定，关闭之。
+engine = create_async_engine(settings.db_url, pool_pre_ping=False, echo=False)
 SessionFactory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 

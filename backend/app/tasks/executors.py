@@ -1,0 +1,55 @@
+"""任务执行器注册表。
+
+执行器签名：`async def (params: dict, ctx: ExecCtx) -> dict`
+- ctx.is_cancelled() -> 周期性调用，返回 True 表示已被取消（抛 TaskCancelled 中断）。
+- ctx.update_progress(percent, current_step) -> 推送进度（DB + Redis Pub/Sub）。
+
+M2/M3 将注册：query（Agent 生成/执行）、file_parse（附件解析）等类型。
+"""
+import asyncio
+import logging
+from typing import Awaitable, Callable
+
+logger = logging.getLogger("datapilot.executors")
+
+EXECUTORS: dict[str, Callable[[dict, "ExecCtx"], Awaitable[dict]]] = {}
+
+
+class TaskCancelled(Exception):
+    """执行器内部主动放弃（任务被取消）。"""
+
+    pass
+
+
+class ExecCtx:
+    def __init__(self, task_id: str, is_cancelled: Callable[[], Awaitable[bool]] | None = None):
+        self.task_id = task_id
+        self._is_cancelled = is_cancelled
+
+    async def is_cancelled(self) -> bool:
+        if self._is_cancelled is None:
+            return False
+        return await self._is_cancelled()
+
+    async def progress(self, percent: int, current_step: str | None = None) -> None:
+        logger.info("task progress", task_id=self.task_id, percent=percent, step=current_step)
+
+
+async def _probe(params: dict, ctx: ExecCtx) -> dict:
+    """内置自测执行器：按步推进进度，支持取消，验证队列状态机。"""
+    steps = max(1, int(params.get("steps", 3)))
+    delay = float(params.get("delay", 0.5))
+    for i in range(1, steps + 1):
+        if await ctx.is_cancelled():
+            raise TaskCancelled()
+        await ctx.progress(int(i / steps * 100), f"步 {i}/{steps}")
+        await asyncio.sleep(delay)
+    return {"ok": True, "message": "probe 完成", "steps": steps}
+
+
+# 注册内置执行器
+EXECUTORS["probe"] = _probe
+
+
+def get_executor(task_type: str):
+    return EXECUTORS.get(task_type)
