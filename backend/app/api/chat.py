@@ -21,7 +21,7 @@ from app.core.database import SessionFactory, get_db
 from app.models.user import Feedback, Message, Session, User
 from app.schemas.common import ApiResponse, MessageRecord
 from app.services.chat_service import ChatService, _json_safe
-from app.services.sql_engine import SqlEngine, SqlRoutingError
+from app.services.sql_engine import SqlEngine, SqlNeedsConfirmation, SqlRoutingError
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -48,9 +48,10 @@ class FeedbackRequest(BaseModel):
 
 
 class ExecuteRequest(BaseModel):
-    block_id: str  # confirmation block id
+    block_id: str  # confirmation / code block id
     decision: Literal["confirm", "cancel"]
-    sql: str | None = None  # 可选：编辑后的 SQL（覆盖确认卡片里的原 SQL）
+    sql: str | None = None  # 可选：编辑后的 SQL（覆盖确认卡片里的原 SQL / code block 内容）
+    datasource_id: str | None = None  # 可选：code block 编辑执行时指定会话级数据源
 
 
 def _serialize_message(msg: Message) -> dict:
@@ -164,10 +165,13 @@ async def chat_feedback(
     return ApiResponse(data=None, message="反馈已提交")
 
 
-async def _find_confirmation_message(
+async def _find_executable_block(
     db: AsyncSession, user: User, block_id: str
 ) -> tuple[Message, dict]:
-    """在归属当前用户的消息中定位 confirmation block（消息 → 会话 → 用户 归属校验）。"""
+    """在归属当前用户的消息中定位可执行 block（confirmation / code）。
+
+    消息 → 会话 → 用户 归属校验，杜绝跨用户执行。
+    """
     result = await db.execute(
         select(Message)
         .join(Session, Message.session_id == Session.id)
@@ -177,9 +181,78 @@ async def _find_confirmation_message(
     )
     for msg in result.scalars().all():
         for block in msg.blocks or []:
-            if block.get("id") == block_id and block.get("type") == "confirmation":
+            if block.get("id") == block_id and block.get("type") in ("confirmation", "code"):
                 return msg, block
-    raise HTTPException(status_code=404, detail="确认卡片不存在或已处理")
+    raise HTTPException(status_code=404, detail="确认卡片或代码块不存在，或已处理")
+
+
+async def _execute_code_block(
+    db: AsyncSession,
+    user: User,
+    msg: Message,
+    block: dict,
+    req: ExecuteRequest,
+) -> dict:
+    """执行 code block（编辑后执行 SQL，契约 3.1.3 / 6.2 code 流转）。
+
+    仅支持 SELECT（allow_write=False）：写操作由 sql_engine 安全拦截（SqlNeedsConfirmation）。
+    成功 → execution.success + 追加 table block（parent_block_id 关联回代码块）；
+    失败 → execution.failed + 错误原因回填，随完整 message 一并返回（200）。
+    """
+    content = block["content"]
+    if content.get("language") != "sql":
+        raise HTTPException(status_code=400, detail="当前仅支持执行 SQL 代码块（Python 编辑执行待开放）")
+    sql = (req.sql or "").strip() or (content.get("code") or "").strip()
+    if not sql:
+        raise HTTPException(status_code=400, detail="SQL 为空，无法执行")
+
+    blocks = list(msg.blocks or [])
+    block_idx = blocks.index(block)
+    try:
+        table = await _sql_engine.execute(
+            user_id=user.id,
+            session_id=str(msg.session_id),
+            sql=sql,
+            datasource_id=req.datasource_id,
+            max_rows=1000,
+            allow_write=False,
+        )
+    except (SqlRoutingError, SqlNeedsConfirmation) as exc:
+        # 路由/安全拦截：回填失败状态并持久化，前端随 message 整体刷新可见
+        content["execution"] = {"status": "failed", "error": str(exc)}
+        block["content"] = content
+        blocks[block_idx] = block
+        msg.blocks = blocks
+        await db.commit()
+        return _serialize_message(msg)
+    except Exception as exc:
+        logger.exception("code block SQL 执行失败", extra={"block_id": req.block_id})
+        content["execution"] = {"status": "failed", "error": f"SQL 执行失败：{str(exc).strip() or '未知错误'}"}
+        block["content"] = content
+        blocks[block_idx] = block
+        msg.blocks = blocks
+        await db.commit()
+        return _serialize_message(msg)
+
+    meta = table.pop("_meta", None)
+    result_block = {
+        "id": str(uuid.uuid4()),
+        "type": "table",
+        "status": "completed",
+        "content": table,
+        "parent_block_id": req.block_id,
+        "created_at": None,
+    }
+    content["execution"] = {
+        "status": "success",
+        "duration_ms": meta.get("duration_ms", 0) if meta else 0,
+    }
+    block["content"] = content
+    blocks[block_idx] = block
+    blocks.append(result_block)
+    msg.blocks = blocks
+    await db.commit()
+    return _serialize_message(msg)
 
 
 @router.post("/execute", response_model=ApiResponse)
@@ -188,13 +261,16 @@ async def chat_execute(
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    """确认卡片决策：cancel 直接标记拒绝；confirm 按 operation 执行并回填结果 block。
+    """确认卡片决策与代码块编辑执行。
 
-    - execute_sql：用卡片上的 SQL（或前端编辑后的 req.sql）执行，允许写操作；
-      结果以 table block 追加到原消息，parent_block_id 关联回确认卡片。
-    - execute_python / delete_attachment / truncate_table：M3 附件引擎接入后支持。
+    - code block：直接执行编辑后的 SQL（仅 SELECT），结果回填 execution 并追加 table block。
+    - confirmation：cancel 标记拒绝；confirm 按 operation 执行并回填结果 block。
     """
-    msg, block = await _find_confirmation_message(db, user, req.block_id)
+    msg, block = await _find_executable_block(db, user, req.block_id)
+    if block["type"] == "code":
+        message = await _execute_code_block(db, user, msg, block, req)
+        return ApiResponse(data={"message": message}, message="执行完成")
+
     content = block["content"]
     blocks = list(msg.blocks or [])
     block_idx = blocks.index(block)

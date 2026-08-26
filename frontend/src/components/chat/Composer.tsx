@@ -1,8 +1,10 @@
 import { useRef, useState } from 'react'
-import { AtSign, Loader2, Paperclip, Send } from 'lucide-react'
+import { AtSign, FileText, Loader2, Paperclip, Send } from 'lucide-react'
 import { useAttachments } from '@/hooks/useAttachments'
 import { useChatStore } from '@/store/chatStore'
+import type { Template } from '@/types/template'
 import { DatasourcePicker } from './DatasourcePicker'
+import { TemplatePickerDialog } from './TemplatePickerDialog'
 
 interface Props {
   sessionId: string
@@ -21,6 +23,7 @@ const DATA_KEYWORDS = [
 export function Composer({ sessionId, disabled, onSend }: Props) {
   const [text, setText] = useState('')
   const [pickerOpen, setPickerOpen] = useState(false)
+  const [templateOpen, setTemplateOpen] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const { uploading, error: uploadError, uploadFiles } = useAttachments()
   const selectedDs = useChatStore((s) => s.datasourceBySession[sessionId] ?? '')
@@ -37,6 +40,13 @@ export function Composer({ sessionId, disabled, onSend }: Props) {
     void uploadFiles(Array.from(files))
     // 清空 value 允许重复选择同一文件
     if (fileRef.current) fileRef.current.value = ''
+  }
+
+  /** 模板「使用」：SQL 回填输入框（可编辑后发送）；数据源联动在 TemplatePickerDialog.pick 处理 */
+  const applyTemplate = (t: Template) => {
+    const sql = (t.sql_text ?? '').trim()
+    setText(sql || `请使用模板「${t.name}」${t.description ? `：${t.description}` : ''}`)
+    setTemplateOpen(false)
   }
 
   // 数据类问题且未指定数据源 → 展示建议提示（仅提示，不拦截发送）
@@ -74,6 +84,15 @@ export function Composer({ sessionId, disabled, onSend }: Props) {
             className="hidden"
             onChange={(e) => pickFiles(e.target.files)}
           />
+          <button
+            onClick={() => setTemplateOpen(true)}
+            disabled={disabled}
+            className="inline-flex size-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+            aria-label="使用模板"
+            title="使用模板"
+          >
+            <FileText size={15} />
+          </button>
           <button
             className="inline-flex size-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground"
             aria-label="提及数据集"
@@ -123,6 +142,12 @@ export function Composer({ sessionId, disabled, onSend }: Props) {
       <div className="mt-1.5 text-center text-[11px] text-muted-foreground">
         Enter 发送 · Shift+Enter 换行 · @ 提及数据集
       </div>
+
+      <TemplatePickerDialog
+        open={templateOpen}
+        onOpenChange={setTemplateOpen}
+        onPick={applyTemplate}
+      />
     </div>
   )
 }

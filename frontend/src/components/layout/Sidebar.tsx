@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
-import { Activity, Database, FileText, Plus, Search, Settings2, Trash2 } from 'lucide-react'
+import { Activity, Database, FileText, Pencil, Plus, Search, Settings2, Trash2 } from 'lucide-react'
 import { api, getUsername } from '@/lib/api'
 import { cancelStream } from '@/hooks/useChat'
 import { useChatStore } from '@/store/chatStore'
@@ -19,6 +19,8 @@ export function Sidebar() {
   const sessionId = useChatStore((s) => s.sessionId)
   const setSessions = useChatStore((s) => s.setSessions)
   const [keyword, setKeyword] = useState('')
+  const [renamingId, setRenamingId] = useState<string | null>(null)
+  const [renameValue, setRenameValue] = useState('')
   const username = getUsername() ?? '用户'
   const filtered = sessions.filter((s) =>
     s.title.toLowerCase().includes(keyword.toLowerCase()),
@@ -63,6 +65,24 @@ export function Sidebar() {
     }
   }
 
+  const startRename = (s: SessionInfo) => {
+    setRenamingId(s.id)
+    setRenameValue(s.title)
+  }
+
+  const commitRename = async () => {
+    const id = renamingId
+    if (!id) return
+    const title = renameValue.trim() || '新对话'
+    setRenamingId(null)
+    try {
+      await api.post('/sessions/update', { id, title })
+      setSessions(sessions.map((x) => (x.id === id ? { ...x, title } : x)))
+    } catch {
+      /* 保存失败保留原标题 */
+    }
+  }
+
   return (
     <aside className="flex h-full w-[260px] shrink-0 flex-col border-r bg-sidebar">
       {/* 品牌栏 */}
@@ -102,17 +122,46 @@ export function Sidebar() {
         )}
         {filtered.map((s) => {
           const active = s.id === sessionId
+          const renaming = renamingId === s.id
           return (
             <div
               key={s.id}
               onClick={() => select(s.id)}
-              className={`group flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 text-[13px] transition-colors ${
+              className={`group flex cursor-pointer items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13px] transition-colors ${
                 active
                   ? 'bg-sidebar-active font-medium text-sidebar-active-foreground'
                   : 'text-foreground hover:bg-sidebar-accent'
               }`}
             >
-              <span className="flex-1 truncate">{s.title}</span>
+              {renaming ? (
+                <input
+                  autoFocus
+                  value={renameValue}
+                  onChange={(e) => setRenameValue(e.target.value)}
+                  onClick={(e) => e.stopPropagation()}
+                  onBlur={() => void commitRename()}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') void commitRename()
+                    if (e.key === 'Escape') setRenamingId(null)
+                  }}
+                  aria-label="重命名会话"
+                  className="min-w-0 flex-1 rounded border border-ring bg-background px-1.5 py-0.5 text-[13px] outline-none"
+                />
+              ) : (
+                <span className="flex-1 truncate">{s.title}</span>
+              )}
+              {!renaming ? (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    startRename(s)
+                  }}
+                  aria-label="重命名会话"
+                  className="flex size-[22px] items-center justify-center rounded-[4px] opacity-0 transition-opacity hover:bg-black/5 group-hover:opacity-60 hover:opacity-100!"
+                >
+                  <Pencil size={13} />
+                </button>
+              ) : null}
               <button
                 onClick={(e) => {
                   e.stopPropagation()

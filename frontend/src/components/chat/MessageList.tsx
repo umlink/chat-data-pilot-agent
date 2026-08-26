@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { Bot, ThumbsDown, ThumbsUp } from 'lucide-react'
+import { Bot, RefreshCw, ThumbsDown, ThumbsUp } from 'lucide-react'
 import { api } from '@/lib/api'
+import { useChat } from '@/hooks/useChat'
 import type { Message } from '@/types/message'
 import { BlockViewer } from './BlockViewer'
 
@@ -63,9 +64,26 @@ export function MessageList({
   /** error block 重试回调（retryable 时显示重试按钮） */
   onRetry?: () => void
 }) {
+  const { send } = useChat()
+
+  /** 重新生成：重发与该 assistant 配对的最近用户消息（保留原回复，PRD 5.1）。
+   *  优先向前找；若 assistant 位于消息头部（created_at 相同导致顺序倒置等异常），向后兜底。 */
+  const regenerate = (assistantIndex: number) => {
+    const findUser = (from: number, dir: 1 | -1): string => {
+      for (let i = from; i >= 0 && i < messages.length; i += dir) {
+        if (messages[i].role === 'user') {
+          return messages[i].blocks.map((b) => String(b.content.text ?? '')).join('\n')
+        }
+      }
+      return ''
+    }
+    const text = findUser(assistantIndex - 1, -1) || findUser(assistantIndex + 1, 1)
+    if (text) send(text)
+  }
+
   return (
     <div className="flex flex-col gap-5">
-      {messages.map((m) => {
+      {messages.map((m, index) => {
         if (m.role === 'user') {
           const text = m.blocks.map((b) => String(b.content.text ?? '')).join('\n')
           return (
@@ -117,7 +135,20 @@ export function MessageList({
                 </div>
               )}
 
-              {showFeedback && <FeedbackButtons messageId={m.id} />}
+              {showFeedback && (
+                <div className="mt-2 flex items-center gap-1 text-muted-foreground">
+                  <FeedbackButtons messageId={m.id} />
+                  <button
+                    onClick={() => regenerate(index)}
+                    disabled={sending}
+                    aria-label="重新生成"
+                    title="重新生成"
+                    className="flex items-center gap-1 rounded p-1 text-[11px] transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    <RefreshCw size={13} /> 重新生成
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         )
