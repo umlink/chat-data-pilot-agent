@@ -2,6 +2,7 @@
 - GET  /api/datasources                列表（敏感字段掩码）
 - POST /api/datasources                创建（敏感字段入库加密）
 - POST /api/datasources/test           测试连接（body 含 type+config，不入库）
+- POST /api/datasources/{id}/test      按已保存数据源测试连接（解密库中密文配置）
 - POST /api/datasources/update         更新（body 含 id；掩码保留旧密文）
 - POST /api/datasources/delete         删除（body 含 id；校验归属）
 - GET  /api/datasources/{id}/preview   预览前 N 行（校验归属）
@@ -28,7 +29,7 @@ from app.schemas.datasource import (
     DatasourceUpdate,
     TestConnectionRequest,
 )
-from app.services.data_service import DataService
+from app.services.data_service import DataService, decrypt_config
 
 router = APIRouter(prefix="/datasources", tags=["datasources"])
 
@@ -115,6 +116,26 @@ async def test_datasource(
     user: Annotated[User, Depends(get_current_user)],
 ):
     result = await _data_service.test_connection(req.type, req.config or {})
+    return ApiResponse(data=result, message="连接测试完成")
+
+
+@router.post("/{ds_id}/test", response_model=ApiResponse[dict])
+async def test_datasource_by_id(
+    ds_id: str,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """按已保存数据源测试连接：解密库中密文配置后直连（列表页「测试」按钮用）。"""
+    ds = await _get_owned_datasource(db, user, ds_id)
+    try:
+        config = decrypt_config(ds.config)
+    except Exception as exc:
+        # 密文无法用当前密钥解密（如密钥更换后旧密文未更新）→ 引导重新编辑保存
+        raise HTTPException(
+            status_code=400,
+            detail="数据源凭据解密失败，请在编辑中重新输入密码保存后再试",
+        ) from exc
+    result = await _data_service.test_connection(ds.type, config)
     return ApiResponse(data=result, message="连接测试完成")
 
 

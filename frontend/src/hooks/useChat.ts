@@ -57,6 +57,8 @@ export function useChat() {
     if (st.sending[sessionId]) return
     // 草稿附件（attachment_id 列表）随消息发送
     const attachmentIds = st.attachments.map((a) => a.attachment_id)
+    // 会话级数据源上下文（'' 不传，走后端主数据源回退）
+    const datasourceId = st.datasourceBySession[sessionId]
     st.setSending(sessionId, true)
 
     const userMsg: Message = {
@@ -79,12 +81,34 @@ export function useChat() {
       blocks: [{ id: textBlockId, type: 'text', status: 'running', content: { text: '' } }],
     })
 
+    // token 缓冲：契约 6.3 要求 50ms / 10 token 批量 flush，避免高频 setState。
+    // 10 token 按 _estimate_tokens 口径 ≈ 40 中文字符（len/2），达到即提前 flush。
+    const tokenBuf = new Map<string, string>()
+    let flushTimer: ReturnType<typeof setTimeout> | null = null
+    const flushTokens = () => {
+      if (flushTimer) {
+        clearTimeout(flushTimer)
+        flushTimer = null
+      }
+      const s = useChatStore.getState()
+      tokenBuf.forEach((text, blockId) => {
+        if (text) s.appendTextToken(sessionId, msgId, blockId, text)
+      })
+      tokenBuf.clear()
+    }
+    const pushToken = (blockId: string, chunk: string) => {
+      const cur = (tokenBuf.get(blockId) ?? '') + chunk
+      tokenBuf.set(blockId, cur)
+      if (cur.length >= 40) flushTokens()
+      else if (!flushTimer) flushTimer = setTimeout(flushTokens, 50)
+    }
+
     const applyFrame = (frame: SSEFrame) => {
       const s = useChatStore.getState()
       const d = frame.data
       switch (frame.event) {
         case 'token':
-          s.appendTextToken(sessionId, msgId, String(d.block_id), String(d.content ?? ''))
+          pushToken(String(d.block_id), String(d.content ?? ''))
           break
         case 'block_start': {
           const type = (d.type as BlockType) ?? 'text'
@@ -104,6 +128,7 @@ export function useChat() {
           s.patchBlock(sessionId, msgId, String(d.block_id), (d.patch as Record<string, unknown>) ?? {})
           break
         case 'block_end':
+          flushTokens()
           s.setBlockStatus(sessionId, msgId, String(d.block_id), (d.status as Block['status']) ?? 'completed')
           break
         case 'task_status': {
@@ -121,6 +146,7 @@ export function useChat() {
           break
         }
         case 'error':
+          flushTokens()
           s.upsertBlock(sessionId, msgId, {
             id: uid(),
             type: 'error',
@@ -128,16 +154,21 @@ export function useChat() {
             content: {
               code: d.code ?? 'INTERNAL_ERROR',
               message: String(d.message ?? '请求失败'),
-              retryable: false,
+              retryable: d.retryable === true,
             },
           })
           break
-        case 'done':
+        case 'done': {
+          flushTokens()
+          const realId = String(d.message_id ?? '')
           s.setMessageMetadata(sessionId, msgId, { usage: d.usage ?? {} })
           s.setBlockStatus(sessionId, msgId, textBlockId, 'completed')
           s.setSending(sessionId, false)
           s.clearAttachments()
+          // 回写服务端真实 message_id：保证后续 feedback / execute 按 id 操作可命中（此前用乐观 id 会 404）
+          if (realId && realId !== msgId) s.replaceMessageId(sessionId, msgId, realId)
           break
+        }
         default:
           break
       }
@@ -155,11 +186,13 @@ export function useChat() {
           session_id: sessionId,
           message: text,
           text_block_id: textBlockId,
+          ...(datasourceId ? { datasource_id: datasourceId } : {}),
           ...(attachmentIds.length > 0 ? { attachments: attachmentIds } : {}),
         },
         {
           onEvent: applyFrame,
           onError: (err) => {
+            flushTokens()
             const s = useChatStore.getState()
             const blocks = s.messagesBySession[sessionId]?.find((m) => m.id === msgId)?.blocks
             const current =
@@ -173,8 +206,10 @@ export function useChat() {
         },
         ctrl.signal,
       )
+      flushTokens()
       useChatStore.getState().setSending(sessionId, false)
     } catch {
+      flushTokens()
       useChatStore.getState().setSending(sessionId, false)
     } finally {
       if (controllers.get(sessionId) === ctrl) controllers.delete(sessionId)

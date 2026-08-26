@@ -310,12 +310,15 @@ class ToolEngine:
     # ---------- request_confirmation ----------
     async def _request_confirmation(self, args: dict[str, Any], ctx: ToolCtx) -> dict:
         operation = args.get("operation") or "execute_sql"
+        # 记录本次确认针对的数据源：工具显式指定优先，否则用会话所选（execute 时按此路由）
+        datasource_id = args.get("datasource_id") or ctx.datasource_id
         content = {
             "operation": operation,
             "title": args.get("title") or "请确认操作",
             "description": args.get("description") or "该操作有副作用，需要你确认",
             "sql": args.get("sql"),
             "risk_level": args.get("risk_level") or "medium",
+            "datasource_id": datasource_id,
             "confirmed": None,
             "result_block_id": None,
         }

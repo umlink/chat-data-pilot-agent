@@ -3,6 +3,7 @@ import { MessageSquare } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { api } from '@/lib/api'
 import { useChatStore } from '@/store/chatStore'
+import { useDataSourceStore, type DataSourceInfo } from '@/store/dataSourceStore'
 import { cancelAllStreams, useChat } from '@/hooks/useChat'
 import { useStickToBottom } from '@/hooks/useStickToBottom'
 import { ensureSession } from '@/hooks/useAttachments'
@@ -30,6 +31,7 @@ export function ChatArea() {
   const setSessionId = useChatStore((s) => s.setSessionId)
   const setSessionMessages = useChatStore((s) => s.setSessionMessages)
   const { send } = useChat()
+  const setDsList = useDataSourceStore((s) => s.setList)
 
   // 当前会话的消息 + sending（多会话隔离）。
   // 注意：selector 必须返回稳定引用，不能用 `?? []`（每次渲染新数组 → 无限循环）
@@ -56,6 +58,22 @@ export function ChatArea() {
 
   // 组件卸载（登出等）时取消所有流
   useEffect(() => () => cancelAllStreams(), [])
+
+  // 聊天页数据源选择器依赖列表：store 为空时拉取一次（失败静默，选择器自动隐藏）
+  useEffect(() => {
+    let alive = true
+    void api
+      .get<DataSourceInfo[]>('/datasources')
+      .then((list) => {
+        if (alive) setDsList(list)
+      })
+      .catch(() => {
+        /* 网络/权限失败：选择器不渲染即可 */
+      })
+    return () => {
+      alive = false
+    }
+  }, [setDsList])
 
   if (!sessionId) {
     const createSession = async () => {
@@ -104,11 +122,30 @@ export function ChatArea() {
             </div>
           </div>
         ) : (
-          <MessageList messages={messages} sending={sending} />
+          <MessageList
+            messages={messages}
+            sending={sending}
+            onRetry={() => {
+              // 重试 = 重发最近一条用户消息（error block retryable 时）
+              for (let i = messages.length - 1; i >= 0; i--) {
+                if (messages[i].role === 'user') {
+                  const text = messages[i].blocks
+                    .map((b) => String(b.content.text ?? ''))
+                    .join('\n')
+                  if (text) {
+                    forceScroll()
+                    send(text)
+                  }
+                  return
+                }
+              }
+            }}
+          />
         )}
       </div>
       <AttachmentDrafts />
       <Composer
+        sessionId={sessionId}
         disabled={sending}
         onSend={(text) => {
           forceScroll()

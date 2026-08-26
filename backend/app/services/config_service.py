@@ -33,6 +33,7 @@ DEFAULT_CONFIGS: dict[str, tuple[str, dict]] = {
     "system.session": ("system", {"retention_days": 30}),
     "system.sql": ("system", {"safe_mode": "normal"}),
     "system.log": ("system", {"retention_days": 30}),
+    "system.ratelimit": ("system", {"per_minute": 10}),  # 对话 API 限流（PRD 安全设计：每用户每分钟 N 次）
 }
 
 # 需按敏感字段处理的配置项（入库加密 / 出参掩码 / 运行时解密）
@@ -155,7 +156,32 @@ class ConfigService:
             logger.warning("配置缓存失效失败：%s", exc)
 
     async def get_llm_config(self) -> dict:
-        """运行时 LLM 配置：provider 配置 + 所选协议的凭证（敏感字段解密）。"""
+        """运行时 LLM 配置：默认 LLM 供应商（优先 llm_providers 表，空表回退旧 configs 键）。
+
+        返回与 LLM 适配器约定的键：provider / model / api_key / base_url /
+        temperature / max_tokens / timeout / retry_count 等（运行时参数沿用默认值）。
+        """
+        from app.models.llm_provider import LlmProvider
+
+        async with SessionFactory() as db:
+            row = (
+                await db.scalars(
+                    select(LlmProvider)
+                    .order_by(LlmProvider.is_default.desc(), LlmProvider.updated_at.desc())
+                    .limit(1)
+                )
+            ).first()
+        if row is not None:
+            defaults = dict(DEFAULT_CONFIGS["llm.provider"][1])
+            merged = {
+                "provider": row.type,
+                "model": row.default_model or "",
+                "api_key": decrypt_secret(row.api_key) if row.api_key else "",
+                "base_url": row.base_url or "",
+            }
+            return {**defaults, **merged}
+
+        # 回退：旧 configs 键（llm.provider / llm.openai / llm.anthropic）
         all_cfg = await self.get_all()
         provider_cfg = all_cfg.get("llm.provider") or DEFAULT_CONFIGS["llm.provider"][1]
         provider = (provider_cfg.get("provider") or "openai").lower()

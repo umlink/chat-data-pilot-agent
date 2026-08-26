@@ -1,17 +1,29 @@
 import { useRef, useState } from 'react'
 import { AtSign, Loader2, Paperclip, Send } from 'lucide-react'
 import { useAttachments } from '@/hooks/useAttachments'
+import { useChatStore } from '@/store/chatStore'
+import { DatasourcePicker } from './DatasourcePicker'
 
 interface Props {
+  sessionId: string
   disabled: boolean
   onSend: (text: string) => void
 }
 
-/** 输入区 Composer（docs/UI设计规范.md 3.12）：文本 + 附件上传（草稿区在 AttachmentDrafts） */
-export function Composer({ disabled, onSend }: Props) {
+/** 数据类问题启发式关键词：命中 + 未选数据源时提示用户选择（不阻塞发送） */
+const DATA_KEYWORDS = [
+  '统计', '查询', '分析', '趋势', '占比', '销售额', '客户', '数据', '表',
+  '报表', '对比', '筛选', '汇总', '订单', '销量', '利润', '指标', '图表',
+  '明细', '平均', '最高', '最低', '多少', '几个', '哪些',
+]
+
+/** 输入区 Composer（docs/UI设计规范.md 3.12）：文本 + 附件上传 + 上下文数据源选择 */
+export function Composer({ sessionId, disabled, onSend }: Props) {
   const [text, setText] = useState('')
+  const [pickerOpen, setPickerOpen] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const { uploading, error: uploadError, uploadFiles } = useAttachments()
+  const selectedDs = useChatStore((s) => s.datasourceBySession[sessionId] ?? '')
 
   const submit = () => {
     const t = text.trim()
@@ -27,10 +39,24 @@ export function Composer({ disabled, onSend }: Props) {
     if (fileRef.current) fileRef.current.value = ''
   }
 
+  // 数据类问题且未指定数据源 → 展示建议提示（仅提示，不拦截发送）
+  const trimmed = text.trim()
+  const showDsHint =
+    trimmed.length > 0 &&
+    !selectedDs &&
+    !disabled &&
+    DATA_KEYWORDS.some((k) => trimmed.includes(k))
+
   return (
     <div className="shrink-0 border-t bg-background px-6 py-3">
       <div className="flex items-end gap-2 rounded-xl border border-input bg-background p-2 transition-shadow focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/15">
         <div className="flex items-center gap-0.5">
+          <DatasourcePicker
+            sessionId={sessionId}
+            disabled={disabled}
+            open={pickerOpen}
+            onOpenChange={setPickerOpen}
+          />
           <button
             onClick={() => fileRef.current?.click()}
             disabled={disabled || uploading}
@@ -81,6 +107,17 @@ export function Composer({ disabled, onSend }: Props) {
       {uploadError ? (
         <div className="mt-1.5 text-center text-[11px] text-error" role="alert">
           {uploadError}
+        </div>
+      ) : null}
+      {showDsHint ? (
+        <div className="mt-1.5 flex items-center justify-center gap-2 text-[11px] text-muted-foreground">
+          <span>检测到数据类问题，建议指定数据源以获得更准确定位</span>
+          <button
+            onClick={() => setPickerOpen(true)}
+            className="rounded-md border px-1.5 py-0.5 text-primary hover:bg-accent"
+          >
+            选择数据源
+          </button>
         </div>
       ) : null}
       <div className="mt-1.5 text-center text-[11px] text-muted-foreground">

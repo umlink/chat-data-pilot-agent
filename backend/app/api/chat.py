@@ -16,11 +16,11 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, rate_limit_chat
 from app.core.database import SessionFactory, get_db
 from app.models.user import Feedback, Message, Session, User
 from app.schemas.common import ApiResponse, MessageRecord
-from app.services.chat_service import ChatService
+from app.services.chat_service import ChatService, _json_safe
 from app.services.sql_engine import SqlEngine, SqlRoutingError
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -66,7 +66,12 @@ def _serialize_message(msg: Message) -> dict:
 
 
 def _sse(event: str, seq: int, data: dict) -> str:
-    return f"event: {event}\nid: {seq}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+    try:
+        payload = json.dumps(data, ensure_ascii=False, allow_nan=False)
+    except (TypeError, ValueError):
+        # NaN/Infinity 是非法 JSON token（pandas 聚合等可能产生），净化后兜底发送
+        payload = json.dumps(_json_safe(data), ensure_ascii=False, allow_nan=False)
+    return f"event: {event}\nid: {seq}\ndata: {payload}\n\n"
 
 
 async def _own_session(db: AsyncSession, user: User, session_id: str) -> Session:
@@ -83,7 +88,7 @@ async def _own_session(db: AsyncSession, user: User, session_id: str) -> Session
 @router.post("/stream")
 async def chat_stream(
     req: ChatStreamRequest,
-    user: Annotated[User, Depends(get_current_user)],
+    user: Annotated[User, Depends(rate_limit_chat)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     if not req.message.strip():
@@ -212,6 +217,8 @@ async def chat_execute(
                 user_id=user.id,
                 session_id=str(msg.session_id),
                 sql=sql,
+                # 按确认卡片记录的数据源执行（旧卡片无此字段 → None 走默认主数据源）
+                datasource_id=content.get("datasource_id") or None,
                 max_rows=1000,
                 allow_write=True,
             )
@@ -219,7 +226,9 @@ async def chat_execute(
             raise HTTPException(status_code=400, detail=str(exc))
         except Exception as exc:
             logger.exception("确认后 SQL 执行失败", extra={"block_id": req.block_id})
-            raise HTTPException(status_code=400, detail=f"SQL 执行失败：{exc}")
+            raise HTTPException(
+                status_code=400, detail=f"SQL 执行失败：{str(exc).strip() or '未知错误'}"
+            )
         meta = table.pop("_meta", None)
         result_block = {
             "id": str(uuid.uuid4()),

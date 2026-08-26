@@ -39,7 +39,7 @@ function ChartSkeleton() {
  * Block 渲染（docs/UI设计规范.md 4 与 docs/Block与协议规范.md 第 2 章）。
  * confirmation / attachment / table 交互组件拆在 chat/ 子文件中。
  */
-export function BlockViewer({ block }: { block: Block }) {
+export function BlockViewer({ block, onRetry }: { block: Block; onRetry?: () => void }) {
   const c = block.content
 
   switch (block.type) {
@@ -137,7 +137,15 @@ export function BlockViewer({ block }: { block: Block }) {
       const content = c as unknown as ErrorContent
       return (
         <div className="rounded-lg border border-error bg-error-bg p-3 text-[13px] leading-6 text-error">
-          {content.message}
+          <div>{content.message}</div>
+          {content.retryable && onRetry && (
+            <button
+              onClick={onRetry}
+              className="mt-2 rounded border border-error/40 px-2.5 py-1 text-xs hover:bg-error/10"
+            >
+              重试
+            </button>
+          )}
         </div>
       )
     }

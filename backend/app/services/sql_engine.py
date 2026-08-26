@@ -4,10 +4,10 @@
 - 仅单条 SELECT 直接执行；写操作（INSERT/UPDATE/DELETE/DROP/ALTER/TRUNCATE 等）
   抛 `SqlNeedsConfirmation`，由工具层转换为确认卡片（operation=execute_sql）。
 - 表路由：SQL 引用 `att_` 前缀表 → 附件引擎临时 SQLite（data/tmp/{session_id}.db）；
-  其余走主数据源（Datasource 解密配置 → 原生 asyncpg，不经 ORM）。
+  其余走主数据源（Datasource 解密配置 → 原生驱动：postgresql 用 asyncpg / mysql 用 aiomysql）。
 - 行数上限 `max_rows`（对应配置 `system.query.max_query_rows`，默认 1000），
   超出则截断并把 `truncated` 置 True。
-- 同步块（sqlite3）用 `asyncio.to_thread`，PG 用 asyncpg 原生异步，均不阻塞事件循环。
+- 同步块（sqlite3）用 `asyncio.to_thread`，PG/MySQL 用原生异步驱动，均不阻塞事件循环。
 """
 import asyncio
 import logging
@@ -50,11 +50,12 @@ class SqlNeedsConfirmation(Exception):
     """写操作/未知语句被安全策略拦截，需转为确认流程。"""
 
     def __init__(self, sql: str, operation: str = "execute_sql", risk: str = "medium",
-                 reason: str = ""):
+                 reason: str = "", datasource_id: str | None = None):
         self.sql = sql
         self.operation = operation
         self.risk = risk
         self.reason = reason or "检测到写操作或多条语句，执行前需要你确认"
+        self.datasource_id = datasource_id
         super().__init__(self.reason)
 
     def summary(self) -> dict[str, Any]:
@@ -64,6 +65,7 @@ class SqlNeedsConfirmation(Exception):
             "risk_level": self.risk,
             "title": "确认执行 SQL",
             "description": self.reason,
+            "datasource_id": self.datasource_id,
         }
 
 
@@ -122,14 +124,38 @@ def _pg_kwargs(config: dict[str, Any]) -> dict[str, Any]:
     return kwargs
 
 
+def _mysql_kwargs(config: dict[str, Any]) -> dict[str, Any]:
+    """从结构化 config 构建 aiomysql.connect 关键字参数（MySQL 无 dsn，取分散字段）。"""
+    host = (config.get("host") or "localhost").strip()
+    port = int(config.get("port") or 3306)
+    user = (config.get("user") or config.get("username") or "").strip()
+    password = config.get("password") or ""
+    database = (config.get("database") or config.get("db") or "").strip()
+    kwargs: dict[str, Any] = {"host": host, "port": port, "user": user, "password": password}
+    if database:
+        kwargs["db"] = database
+    if config.get("ssl") is not None:
+        kwargs["ssl"] = config["ssl"]
+    return kwargs
+
+
 def _jsonable(value: Any) -> Any:
-    """递归转 JSON 可序列化对象（asyncpg/sqlite 返回的专有类型 → 原生类型）。"""
+    """递归转 JSON 可序列化对象（asyncpg/aiomysql/sqlite 返回的专有类型 → 原生类型）。"""
     import datetime
     import decimal
+    import math
     import uuid
 
+    if isinstance(value, float) and not math.isfinite(value):
+        return None  # JSONB/JSON 拒绝 NaN/Infinity，归一为 NULL
     if value is None or isinstance(value, (bool, int, float, str)):
         return value
+    if isinstance(value, (bytes, bytearray)):
+        # MySQL BINARY/BLOB 等返回 bytes：优先按 UTF-8 还原，失败退化为 repr
+        try:
+            return value.decode("utf-8")
+        except UnicodeDecodeError:
+            return repr(bytes(value))
     if isinstance(value, datetime.datetime):
         return value.isoformat()
     if isinstance(value, datetime.date):
@@ -214,7 +240,7 @@ class SqlEngine:
         kind, risk = _sql_kind(sql)
         if not allow_write and (kind == "write" or kind == "unsupported"):
             raise SqlNeedsConfirmation(
-                sql, operation="execute_sql", risk=risk,
+                sql, operation="execute_sql", risk=risk, datasource_id=datasource_id,
                 reason=("检测到写操作或不可判定的 SQL，执行前需你确认"
                         if kind == "write"
                         else "仅支持单条 SELECT；写操作或多条语句需要确认后执行"),
@@ -277,7 +303,7 @@ class SqlEngine:
         finally:
             conn.close()
 
-    # ---------- 主数据源路由（asyncpg） ----------
+    # ---------- 主数据源路由（按类型分发：postgresql → asyncpg / mysql → aiomysql） ----------
     async def _find_datasource(self, user_id, datasource_id: str | None) -> Datasource:
         async with SessionFactory() as db:
             if datasource_id:
@@ -303,7 +329,26 @@ class SqlEngine:
         allow_write: bool = False,
     ) -> dict[str, Any]:
         ds = await self._find_datasource(user_id, datasource_id)
-        cfg = _decrypt_config(ds.config)
+        try:
+            cfg = _decrypt_config(ds.config)
+        except Exception as exc:
+            # 密码为旧密钥加密/密文损坏：给可读提示，引导用户在编辑中重输密码保存
+            raise SqlRoutingError(
+                "数据源凭据解密失败，请在编辑中重新输入密码保存后再试"
+            ) from exc
+        if ds.type == "mysql":
+            return await self._execute_mysql(cfg, sql, max_rows, allow_write)
+        if ds.type == "sqlite":
+            raise SqlRoutingError(
+                "暂不支持 sqlite 数据源查询，请使用 PostgreSQL/MySQL 数据源或上传附件"
+            )
+        if ds.type != "postgresql":
+            raise SqlRoutingError(f"暂不支持 {ds.type} 数据源查询")
+        return await self._execute_pg(cfg, sql, max_rows, allow_write)
+
+    async def _execute_pg(
+        self, cfg: dict[str, Any], sql: str, max_rows: int, allow_write: bool
+    ) -> dict[str, Any]:
         try:
             conn = await asyncpg.connect(timeout=30, **_pg_kwargs(cfg))
         except Exception as exc:
@@ -339,6 +384,59 @@ class SqlEngine:
         except SqlNeedsConfirmation:
             raise
         except Exception as exc:
-            raise SqlRoutingError(f"SQL 执行失败：{exc}") from exc
+            raise SqlRoutingError(
+                f"SQL 执行失败：{str(exc).strip() or '未知错误'}"
+            ) from exc
         finally:
             await conn.close()
+
+    async def _execute_mysql(
+        self, cfg: dict[str, Any], sql: str, max_rows: int, allow_write: bool
+    ) -> dict[str, Any]:
+        try:
+            import aiomysql
+        except ImportError as exc:
+            raise SqlRoutingError(
+                "MySQL 数据源查询需要 aiomysql，请在 requirements.txt 中新增依赖：aiomysql"
+            ) from exc
+        try:
+            conn = await aiomysql.connect(connect_timeout=30, **_mysql_kwargs(cfg))
+        except Exception as exc:
+            raise SqlRoutingError(f"连接数据源失败：{exc}") from exc
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(sql)
+                if cur.description is None:
+                    # 无结果集语句（写操作/无返回）：确认路径放行并提交，返回影响行数
+                    if not allow_write:
+                        raise SqlNeedsConfirmation(
+                            sql, operation="execute_sql", risk="medium",
+                            reason="MySQL 数据源仅允许 SELECT 查询",
+                        )
+                    await conn.commit()
+                    return {
+                        "columns": [{"key": "affected_rows", "dtype": "number"}],
+                        "rows": [{"affected_rows": cur.rowcount}],
+                        "total": 1, "truncated": False,
+                    }
+                cols = [d[0] for d in cur.description]
+                records = await cur.fetchmany(max_rows + 1)
+                rows = [
+                    {c: _jsonable(row[i]) for i, c in enumerate(cols)}
+                    for row in records[:max_rows]
+                ]
+                return {
+                    "columns": [{"key": c, "dtype": "string"} for c in cols],
+                    "rows": rows,
+                    "total": len(records),
+                    "truncated": len(records) > max_rows,
+                }
+        except SqlNeedsConfirmation:
+            raise
+        except Exception as exc:
+            raise SqlRoutingError(
+                f"SQL 执行失败：{str(exc).strip() or '未知错误'}"
+            ) from exc
+        finally:
+            # aiomysql.close() 为同步方法（asyncpg 才是 async），不可 await
+            conn.close()

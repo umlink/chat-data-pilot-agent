@@ -11,6 +11,7 @@ from app.api import (
     config,
     datasources,
     export,
+    llm_providers,
     logs,
     sessions,
     tasks,
@@ -27,5 +28,6 @@ api_router.include_router(upload.router)
 api_router.include_router(export.router)
 api_router.include_router(tasks.router)
 api_router.include_router(config.router)
+api_router.include_router(llm_providers.router)
 api_router.include_router(templates.router)
 api_router.include_router(logs.router)

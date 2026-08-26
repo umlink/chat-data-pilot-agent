@@ -11,6 +11,8 @@ interface ChatState {
   sending: Record<string, boolean>
   /** 附件草稿（上传成功但未发送；发送成功或移除后清掉） */
   attachments: AttachmentContent[]
+  /** 会话级数据源选择（key=sessionId，'' = 未指定，走后端主数据源回退；契约 /chat/stream datasource_id） */
+  datasourceBySession: Record<string, string>
 
   setSessionId: (id: string | null) => void
   /** 加载某会话历史（切换时调用） */
@@ -19,10 +21,14 @@ interface ChatState {
   getCurrentMessages: () => Message[]
   setSessions: (sessions: SessionInfo[]) => void
   setSending: (sessionId: string, v: boolean) => void
+  /** 设置会话的数据源上下文（'' = 未指定） */
+  setSessionDatasource: (sessionId: string, dsId: string) => void
 
   appendMessage: (sessionId: string, msg: Message) => void
   /** 按 id 整体替换单条消息（execute 决策后服务端返回完整 Message）；无则忽略 */
   replaceMessage: (sessionId: string, msg: Message) => void
+  /** 替换消息 id（done 事件回写服务端真实 message_id，保证 feedback 等按 id 的操作可命中） */
+  replaceMessageId: (sessionId: string, oldId: string, newId: string) => void
   /** 按 block.id upsert（新增或替换） */
   upsertBlock: (sessionId: string, messageId: string, block: Block) => void
   /** JSON Merge Patch 风格浅合并到 block.content */
@@ -55,6 +61,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   sessions: [],
   sending: {},
   attachments: [],
+  datasourceBySession: {},
 
   setSessionId: (id) => set({ sessionId: id }),
   setSessionMessages: (sessionId, messages) =>
@@ -65,6 +72,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
   setSessions: (sessions) => set({ sessions }),
   setSending: (sessionId, v) => set((s) => ({ sending: { ...s.sending, [sessionId]: v } })),
+  setSessionDatasource: (sessionId, dsId) =>
+    set((s) => ({ datasourceBySession: { ...s.datasourceBySession, [sessionId]: dsId } })),
 
   appendMessage: (sessionId, msg) =>
     set((s) => {
@@ -80,6 +89,18 @@ export const useChatStore = create<ChatState>((set, get) => ({
         messagesBySession: {
           ...s.messagesBySession,
           [sessionId]: list.map((m) => (m.id === msg.id ? msg : m)),
+        },
+      }
+    }),
+
+  replaceMessageId: (sessionId, oldId, newId) =>
+    set((s) => {
+      const list = s.messagesBySession[sessionId]
+      if (!list) return s
+      return {
+        messagesBySession: {
+          ...s.messagesBySession,
+          [sessionId]: list.map((m) => (m.id === oldId ? { ...m, id: newId } : m)),
         },
       }
     }),

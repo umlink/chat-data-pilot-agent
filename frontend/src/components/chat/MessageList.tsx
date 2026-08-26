@@ -53,7 +53,16 @@ function FeedbackButtons({ messageId }: { messageId: string }) {
 }
 
 /** 消息流：用户气泡（深色右对齐） + AI 消息（头像+名称+Block 流） （docs/UI设计规范.md 3.4） */
-export function MessageList({ messages, sending }: { messages: Message[]; sending: boolean }) {
+export function MessageList({
+  messages,
+  sending,
+  onRetry,
+}: {
+  messages: Message[]
+  sending: boolean
+  /** error block 重试回调（retryable 时显示重试按钮） */
+  onRetry?: () => void
+}) {
   return (
     <div className="flex flex-col gap-5">
       {messages.map((m) => {
@@ -103,7 +112,7 @@ export function MessageList({ messages, sending }: { messages: Message[]; sendin
               ) : (
                 <div className="space-y-3">
                   {m.blocks.map((b) => (
-                    <BlockViewer key={b.id} block={b} />
+                    <BlockViewer key={b.id} block={b} onRetry={onRetry} />
                   ))}
                 </div>
               )}

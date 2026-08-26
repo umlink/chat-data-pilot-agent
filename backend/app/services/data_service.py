@@ -36,7 +36,8 @@ _EXCLUDED_SCHEMAS = ("pg_catalog", "information_schema")
 def _jsonable(value: Any) -> Any:
     """把驱动返回的非 JSON 原生值（bytes/datetime/Decimal/UUID 等）归一化为可 JSON 序列化值。"""
     try:
-        return json.loads(json.dumps(value, default=str, ensure_ascii=False))
+        # allow_nan=False：NaN/Infinity 走 except 兜底为字符串，避免产出非法 JSON
+        return json.loads(json.dumps(value, default=str, ensure_ascii=False, allow_nan=False))
     except (TypeError, ValueError):
         return str(value)
 
@@ -139,7 +140,8 @@ class DataService:
                 row = await cur.fetchone()
             return {"ok": True, "server_version": (row[0] if row and row[0] else "unknown")}
         finally:
-            await conn.close()
+            # aiomysql.close() 为同步方法（asyncpg 才是 async），不可 await
+            conn.close()
 
     async def _test_sqlite(self, config: dict[str, Any]) -> dict[str, Any]:
         try:
@@ -164,20 +166,22 @@ class DataService:
     async def get_schema(self, ds: Datasource) -> dict[str, Any]:
         """提取数据源 schema（每表列名 + 类型 + 注释 + 3 行采样）。归属校验由 api 层完成。
 
-        注：M3 仅开放 PostgreSQL，其余类型抛 NotImplementedError（清晰中文）。
+        支持 PostgreSQL / MySQL；其余类型抛 NotImplementedError（清晰中文）。
         """
-        if ds.type != "postgresql":
-            raise NotImplementedError(
-                f"暂不支持 {ds.type} 数据源的 Schema 提取，M3 仅开放 PostgreSQL"
+        if ds.type == "postgresql":
+            conn = await asyncpg.connect(
+                timeout=CONNECT_TIMEOUT, **_postgres_kwargs(decrypt_config(ds.config))
             )
-        conn = await asyncpg.connect(
-            timeout=CONNECT_TIMEOUT, **_postgres_kwargs(decrypt_config(ds.config))
+            try:
+                tables = await self._pg_schema(conn)
+            finally:
+                await conn.close()
+            return {"datasource_id": str(ds.id), "datasource_type": ds.type, "tables": tables}
+        if ds.type == "mysql":
+            return await self._mysql_schema(ds)
+        raise NotImplementedError(
+            f"暂不支持 {ds.type} 数据源的 Schema 提取，当前支持 PostgreSQL / MySQL"
         )
-        try:
-            tables = await self._pg_schema(conn)
-        finally:
-            await conn.close()
-        return {"datasource_id": str(ds.id), "datasource_type": ds.type, "tables": tables}
 
     async def preview(
         self,
@@ -186,18 +190,20 @@ class DataService:
         limit: int = DEFAULT_PREVIEW_LIMIT,
     ) -> dict[str, Any]:
         """返回目标表前 N 行数据。table 可带 schema 前缀，缺省取数据库第一张用户表。"""
-        if ds.type != "postgresql":
-            raise NotImplementedError(
-                f"暂不支持 {ds.type} 数据源的预览，M3 仅开放 PostgreSQL"
+        if ds.type == "postgresql":
+            conn = await asyncpg.connect(
+                timeout=CONNECT_TIMEOUT, **_postgres_kwargs(decrypt_config(ds.config))
             )
-        conn = await asyncpg.connect(
-            timeout=CONNECT_TIMEOUT, **_postgres_kwargs(decrypt_config(ds.config))
+            try:
+                data = await self._pg_preview(conn, table=table, limit=limit)
+            finally:
+                await conn.close()
+            return {"datasource_id": str(ds.id), **data}
+        if ds.type == "mysql":
+            return await self._mysql_preview(ds, table=table, limit=limit)
+        raise NotImplementedError(
+            f"暂不支持 {ds.type} 数据源的预览，当前支持 PostgreSQL / MySQL"
         )
-        try:
-            data = await self._pg_preview(conn, table=table, limit=limit)
-        finally:
-            await conn.close()
-        return {"datasource_id": str(ds.id), **data}
 
     # ---------- PostgreSQL 内部实现 ----------
     async def _pg_schema(self, conn: asyncpg.Connection) -> list[dict[str, Any]]:
@@ -314,3 +320,143 @@ class DataService:
             "count": len(rows),
             "truncated": len(rows) >= limit,
         }
+
+    # ---------- MySQL 内部实现 ----------
+    async def _mysql_conn(self, ds: Datasource):
+        """建立 aiomysql 连接（配置已解密）。"""
+        import aiomysql
+
+        return await aiomysql.connect(
+            connect_timeout=CONNECT_TIMEOUT, **_mysql_kwargs(decrypt_config(ds.config))
+        )
+
+    @staticmethod
+    def _mysql_quote(name: str) -> str:
+        """反引号引用 MySQL 标识符（内部反引号转义为双反引号）。"""
+        return "`" + name.replace("`", "``") + "`"
+
+    async def _mysql_schema(self, ds: Datasource) -> dict[str, Any]:
+        conn = await self._mysql_conn(ds)
+        try:
+            dbname = _mysql_kwargs(decrypt_config(ds.config)).get("db") or ""
+            if not dbname:
+                raise ValueError("MySQL 数据源未配置 database")
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """SELECT table_name, table_comment
+                       FROM information_schema.tables
+                       WHERE table_schema = %s
+                       ORDER BY table_name""",
+                    (dbname,),
+                )
+                tables_info = {row[0]: (row[1] or "") for row in await cur.fetchall()}
+                await cur.execute(
+                    """SELECT table_name, column_name, data_type, is_nullable, column_comment
+                       FROM information_schema.columns
+                       WHERE table_schema = %s
+                       ORDER BY table_name, ordinal_position""",
+                    (dbname,),
+                )
+                tables: dict[str, dict[str, Any]] = {}
+                for tname, cname, dtype, nullable, comment in await cur.fetchall():
+                    table = tables.get(tname)
+                    if table is None:
+                        table = {
+                            "schema": dbname,
+                            "name": tname,
+                            "comment": tables_info.get(tname) or None,
+                            "columns": [],
+                        }
+                        tables[tname] = table
+                    table["columns"].append(
+                        {
+                            "name": cname,
+                            "data_type": dtype,
+                            "comment": comment or None,
+                            "is_nullable": nullable == "YES",
+                        }
+                    )
+            for table in tables.values():
+                table["sample"] = await self._mysql_sample(conn, table, limit=SAMPLE_ROWS)
+        finally:
+            conn.close()
+        return {
+            "datasource_id": str(ds.id),
+            "datasource_type": ds.type,
+            "tables": list(tables.values()),
+        }
+
+    async def _mysql_sample(
+        self, conn, table: dict[str, Any], limit: int
+    ) -> list[dict[str, Any]] | None:
+        """每表采样至多 limit 行（列名对齐 SELECT * 与 information_schema 顺序）。"""
+        quoted = f"{self._mysql_quote(table['schema'])}.{self._mysql_quote(table['name'])}"
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(f"SELECT * FROM {quoted} LIMIT {int(limit)}")
+                cols = [d[0] for d in cur.description]
+                records = await cur.fetchall()
+            return [
+                {cols[i]: _jsonable(row[i]) for i in range(len(cols))}
+                for row in records[:limit]
+            ]
+        except Exception as exc:
+            logger.debug("MySQL 采样失败 %s.%s：%s", table["schema"], table["name"], exc)
+            return None
+
+    async def _mysql_preview(
+        self, ds: Datasource, table: str | None, limit: int
+    ) -> dict[str, Any]:
+        conn = await self._mysql_conn(ds)
+        try:
+            dbname = _mysql_kwargs(decrypt_config(ds.config)).get("db") or ""
+            if not dbname:
+                raise ValueError("MySQL 数据源未配置 database")
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """SELECT table_name
+                       FROM information_schema.tables
+                       WHERE table_schema = %s
+                       ORDER BY table_name""",
+                    (dbname,),
+                )
+                tables = [row[0] for row in await cur.fetchall()]
+            if not tables:
+                raise ValueError("数据库中暂无可预览的表")
+            target = table or tables[0]
+            if table:
+                if "." in table:
+                    schema, _, name = table.rpartition(".")
+                    candidates = [t for t in tables if t == name and schema == dbname]
+                else:
+                    candidates = [t for t in tables if t == table]
+                if not candidates:
+                    raise ValueError(f"表不存在: {table}")
+                target = candidates[0]
+            quoted = self._mysql_quote(target)
+            async with conn.cursor() as cur:
+                await cur.execute(f"SELECT * FROM {quoted} LIMIT {int(limit)}")
+                cols = [d[0] for d in cur.description]
+                records = await cur.fetchall()
+                await cur.execute(
+                    """SELECT column_name, data_type
+                       FROM information_schema.columns
+                       WHERE table_schema = %s AND table_name = %s
+                       ORDER BY ordinal_position""",
+                    (dbname, target),
+                )
+                types_map = {row[0]: row[1] for row in await cur.fetchall()}
+            rows = [
+                {col: _jsonable(rec[idx]) for idx, col in enumerate(cols)}
+                for rec in records
+            ]
+            return {
+                "table_schema": dbname,
+                "table": target,
+                "columns": [{"name": col, "data_type": types_map.get(col, "")} for col in cols],
+                "rows": rows,
+                "count": len(rows),
+                "truncated": len(rows) >= limit,
+            }
+        finally:
+            conn.close()
