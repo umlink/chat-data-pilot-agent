@@ -262,6 +262,39 @@ class ChatService:
             lines.append(f"- {table['schema']}.{table['name']}: {cols}{comment}")
         return "\n".join(lines)
 
+    async def _attachment_schema(self, session_id, attachments: list[str]) -> str:
+        """把已解析附件（表名 + 列 + 行数）注入系统提示，AI 可直接 run_sql 查询 att_ 表。
+
+        附件归属校验：Attachment.session_id 必须等于当前会话；未解析完成（无 parsed_schema）
+        的附件跳过。返回的提示自带换行前导。
+        """
+        from app.models.datasource import Attachment
+
+        rows: list[Attachment] = []
+        async with SessionFactory() as db:
+            for aid in attachments[:5]:
+                try:
+                    att = await db.get(Attachment, UUID(aid))
+                except ValueError:
+                    continue
+                if att is None or str(att.session_id) != str(session_id) or not att.parsed_schema:
+                    continue
+                rows.append(att)
+        if not rows:
+            return ""
+        lines = ["\n## 附件数据（独立引擎，直接用 run_sql 查询，表名以 att_ 开头）"]
+        for att in rows:
+            schema = att.parsed_schema or {}
+            cols = ", ".join(
+                f"{c.get('name')}({c.get('dtype', 'string')})"
+                for c in schema.get("columns", [])
+            )
+            lines.append(
+                f"- 附件「{att.file_name}」→ 表 {schema.get('table_name', 'att_?')}，"
+                f"{schema.get('row_count', '?')} 行：{cols}"
+            )
+        return "\n".join(lines)
+
     # ---------- 主流程 ----------
     async def stream(
         self,
@@ -314,10 +347,7 @@ class ChatService:
         if schema_text:
             system += f"\n\n## 数据源结构\n{schema_text}"
         if attachments:
-            system += (
-                "\n本次会话附带了附件数据（表名以 att_ 开头，位于独立引擎，"
-                "跨源 JOIN 请用 run_python 合并）。"
-            )
+            system += await self._attachment_schema(session_id, attachments)
         if datasource_id:
             system += "\n本次请求指定了数据源，run_sql 时省略 datasource_id 即使用该数据源。"
         messages: list[dict[str, Any]] = [{"role": "system", "content": system}]

@@ -44,6 +44,8 @@ _WRITE_RISK: dict[str, str] = {
 _FORBIDDEN = ("COPY", "CALL", "EXECUTE", "VACUUM", "GRANT", "REVOKE", "ATTACH", "DETACH")
 
 _ATT_TABLE_RE = re.compile(r"\batt_[A-Za-z0-9-]+", re.IGNORECASE)
+# SQLite 元数据/发现类语句（附件引擎专用）：AI 用它们列出附件表清单 / 查看表结构
+_SQLITE_META_RE = re.compile(r"sqlite_master|\bpragma\b", re.IGNORECASE)
 
 
 class SqlNeedsConfirmation(Exception):
@@ -247,7 +249,8 @@ class SqlEngine:
             )
 
         started = time.perf_counter()
-        if _ATT_TABLE_RE.search(sql):
+        # att_ 表 / sqlite 元数据语句 → 附件引擎；其余 → 主数据源
+        if _ATT_TABLE_RE.search(sql) or _SQLITE_META_RE.search(sql):
             result = await self._execute_sqlite(str(session_id), sql, max_rows, allow_write)
         else:
             result = await self._execute_main(user_id, sql, datasource_id, max_rows, allow_write)
