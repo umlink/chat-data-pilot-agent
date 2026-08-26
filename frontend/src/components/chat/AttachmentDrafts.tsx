@@ -1,58 +1,49 @@
-import { useEffect } from 'react'
-import { X } from 'lucide-react'
-import { api } from '@/lib/api'
-import type { AttachmentStatusResponse } from '@/hooks/useAttachments'
+import { useCallback, useState } from 'react'
+import { Loader2, X } from 'lucide-react'
+import { removeAttachmentRemote, useAttachmentPolling } from '@/hooks/useAttachments'
 import { useChatStore } from '@/store/chatStore'
 import type { AttachmentContent } from '@/types/message'
 import { AttachmentStatusView } from './AttachmentBlock'
 
 /**
- * 单个草稿附件：轮询 GET /api/upload/{id}/status（2s）直到 ready/failed，
- * 回填 store 中的解析状态（写法参考 useTaskPoll）。
+ * 单个草稿附件：轮询 GET /api/upload/{id}/status（2s）直到 ready/failed，回填解析状态；
+ * 移除时调用后端删除（记录 + MinIO 对象 + 临时表），失败也先本地移除。
  */
 function DraftCard({ draft }: { draft: AttachmentContent }) {
   const updateAttachment = useChatStore((s) => s.updateAttachment)
   const removeAttachment = useChatStore((s) => s.removeAttachment)
+  const [removing, setRemoving] = useState(false)
   const polling = draft.status === 'uploading' || draft.status === 'parsing'
 
-  useEffect(() => {
-    if (!polling) return
-    let alive = true
-    let timer: ReturnType<typeof setInterval> | null = null
-    const tick = async () => {
-      try {
-        const st = await api.get<AttachmentStatusResponse>(`/upload/${draft.attachment_id}/status`)
-        if (!alive) return
-        updateAttachment(draft.attachment_id, {
-          status: st.status,
-          file_size: st.file_size ?? 0,
-          error: st.error ?? undefined,
-          sheet_name: st.parsed_schema?.sheet_name,
-          row_count: st.parsed_schema?.row_count,
-          columns: st.parsed_schema?.columns?.map(({ name, dtype }) => ({ name, dtype })),
-        })
-      } catch {
-        /* 轮询失败忽略，下轮重试 */
-      }
+  const onUpdate = useCallback(
+    (patch: Partial<AttachmentContent>) => updateAttachment(draft.attachment_id, patch),
+    [updateAttachment, draft.attachment_id],
+  )
+  useAttachmentPolling(draft.attachment_id, polling, onUpdate)
+
+  const onRemove = async () => {
+    if (removing) return
+    setRemoving(true)
+    try {
+      await removeAttachmentRemote(draft.attachment_id)
+    } catch {
+      /* 删除失败不阻断：草稿区移除是本地动作，MinIO 对象由过期清理兜底 */
+    } finally {
+      removeAttachment(draft.attachment_id)
     }
-    void tick()
-    timer = setInterval(tick, 2000)
-    return () => {
-      alive = false
-      if (timer) clearInterval(timer)
-    }
-  }, [draft.attachment_id, polling, updateAttachment])
+  }
 
   return (
     <div className="flex max-w-full items-center gap-1 rounded-lg border bg-card py-1.5 pl-3 pr-1.5">
       <AttachmentStatusView content={draft} />
       <button
-        onClick={() => removeAttachment(draft.attachment_id)}
+        onClick={() => void onRemove()}
+        disabled={removing}
         aria-label={`移除附件 ${draft.file_name}`}
-        title="从草稿区移除（MinIO 对象暂不删除，MVP）"
-        className="inline-flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+        title="从草稿区移除附件"
+        className="inline-flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground disabled:cursor-wait disabled:opacity-40"
       >
-        <X size={13} />
+        {removing ? <Loader2 size={13} className="animate-spin" /> : <X size={13} />}
       </button>
     </div>
   )

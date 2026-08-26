@@ -465,6 +465,37 @@ async def file_parse_executor(params: dict, ctx: "ExecCtx") -> dict:
 # ---------- 请求路径服务（上传 / 状态查询） ----------
 
 
+def preview_attachment_table(
+    session_id: str, table_name: str, limit: int = 50
+) -> dict[str, Any]:
+    """读取会话级 SQLite 附件表前 limit 行（PRD 3.1.5 附件预览，默认前 50 行）。
+
+    只读连接（mode=ro），表名按白名单校验（必须真实存在于该会话库），
+    防止任意字符串注入 SQL。返回 {columns, rows, row_count, truncated}。
+    """
+    db_path = settings.tmp_dir / f"{session_id}.db"
+    if not db_path.exists():
+        raise AttachmentError("附件临时数据不存在，可能已过期清理", status_code=404)
+    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=30)
+    try:
+        found = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name = ?", (table_name,)
+        ).fetchone()
+        if not found:
+            raise AttachmentError("附件数据表不存在，可能已移除或过期", status_code=404)
+        row_count = conn.execute(f'SELECT COUNT(*) FROM "{table_name}"').fetchone()[0]
+        columns = [row[1] for row in conn.execute(f'PRAGMA table_info("{table_name}")').fetchall()]
+        rows = conn.execute(f'SELECT * FROM "{table_name}" LIMIT ?', (limit,)).fetchall()
+    finally:
+        conn.close()
+    return {
+        "columns": columns,
+        "rows": [dict(zip(columns, row)) for row in rows],
+        "row_count": row_count,
+        "truncated": int(row_count) > limit,
+    }
+
+
 def _safe_object_file_name(file_name: str) -> str:
     """对象键中的文件名只保留安全字符，避免路径分隔符等破坏键结构。"""
     cleaned = re.sub(r"[^\w.\-]", "_", file_name).strip("._")
@@ -644,3 +675,35 @@ class AttachmentService:
             "parsed_schema": attachment.parsed_schema,
             "task": task_brief,
         }
+
+    async def remove_attachment(self, db: AsyncSession, attachment: Attachment) -> None:
+        """移除附件：删 MinIO 对象 + 会话级 SQLite 表 + DB 记录（幂等，任一步失败不阻断）。
+
+        PRD 3.1.5「支持附件移除」。历史消息中的 attachment block 保留但引用失效，
+        后续查询会得到表不存在错误，符合「已移除」语义。
+        """
+        try:
+            await self._storage.remove(attachment.object_key)
+        except Exception:  # noqa: BLE001 对象已不存在等存储异常不阻断记录删除
+            logger.warning(
+                "附件对象删除失败（忽略）",
+                extra={"resource": f"attachment:{attachment.id}", "action": "delete"},
+            )
+        table_name = (attachment.parsed_schema or {}).get("table_name")
+        if table_name:
+            db_path = settings.tmp_dir / f"{attachment.session_id}.db"
+
+            def _drop_table() -> None:
+                try:
+                    conn = sqlite3.connect(db_path, timeout=30)
+                    try:
+                        conn.execute(f'DROP TABLE IF EXISTS "{table_name}"')
+                        conn.commit()
+                    finally:
+                        conn.close()
+                except sqlite3.Error:
+                    logger.warning("附件临时表删除失败（忽略）", extra={"table": table_name})
+
+            await asyncio.to_thread(_drop_table)
+        await db.delete(attachment)
+        await db.commit()

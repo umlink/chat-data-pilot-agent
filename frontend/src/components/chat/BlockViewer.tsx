@@ -106,8 +106,19 @@ function CopyBlockButton({ text }: { text: string }) {
 /**
  * Block 渲染（docs/UI设计规范.md 4 与 docs/Block与协议规范.md 第 2 章）。
  * confirmation / attachment / table 交互组件拆在 chat/ 子文件中。
+ * sessionId/messageId 供 attachment 等需回写消息内 block 的交互组件使用。
  */
-export function BlockViewer({ block, onRetry }: { block: Block; onRetry?: () => void }) {
+export function BlockViewer({
+  block,
+  onRetry,
+  sessionId,
+  messageId,
+}: {
+  block: Block
+  onRetry?: () => void
+  sessionId?: string
+  messageId?: string
+}) {
   const c = block.content
   const { send } = useChat()
 
@@ -208,7 +219,12 @@ export function BlockViewer({ block, onRetry }: { block: Block; onRetry?: () => 
       }
 
       case 'attachment':
-        return <AttachmentBlock content={c as unknown as AttachmentContent} />
+        return (
+          <AttachmentBlock
+            content={c as unknown as AttachmentContent}
+            context={sessionId && messageId ? { sessionId, messageId, blockId: block.id } : undefined}
+          />
+        )
 
       default:
         return null

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Bot, RefreshCw, ThumbsDown, ThumbsUp } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useChat } from '@/hooks/useChat'
+import { useChatStore } from '@/store/chatStore'
 import type { Message } from '@/types/message'
 import { BlockViewer } from './BlockViewer'
 
@@ -65,6 +66,7 @@ export function MessageList({
   onRetry?: () => void
 }) {
   const { send } = useChat()
+  const sessionId = useChatStore((s) => s.sessionId) ?? undefined
 
   /** 重新生成：重发与该 assistant 配对的最近用户消息（保留原回复，PRD 5.1）。
    *  优先向前找；若 assistant 位于消息头部（created_at 相同导致顺序倒置等异常），向后兜底。 */
@@ -130,7 +132,13 @@ export function MessageList({
               ) : (
                 <div className="space-y-3">
                   {m.blocks.map((b) => (
-                    <BlockViewer key={b.id} block={b} onRetry={onRetry} />
+                    <BlockViewer
+                      key={b.id}
+                      block={b}
+                      onRetry={onRetry}
+                      sessionId={sessionId}
+                      messageId={m.id}
+                    />
                   ))}
                 </div>
               )}

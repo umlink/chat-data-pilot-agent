@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { API_BASE, ApiError, api, getToken } from '@/lib/api'
 import { useChatStore } from '@/store/chatStore'
 import type { AttachmentContent, SessionInfo } from '@/types/message'
@@ -67,13 +67,34 @@ export function formatFileSize(bytes: number): string {
 }
 
 /** 单文件上传：FormData 直接 fetch（api.ts 的 JSON request 不适用于 multipart），解析统一信封 */
-async function uploadOne(file: File, sessionId: string): Promise<UploadedAttachment> {
+export async function uploadOne(file: File, sessionId: string): Promise<UploadedAttachment> {
+  return multipartUpload('/upload', { file, session_id: sessionId })
+}
+
+/** 替换附件：上传新文件（POST /api/upload/{id}/replace），旧记录保留供历史溯源 */
+export async function replaceOne(
+  attachmentId: string,
+  file: File,
+  sessionId: string,
+): Promise<UploadedAttachment> {
+  return multipartUpload(`/upload/${attachmentId}/replace`, { file, session_id: sessionId })
+}
+
+/** 移除附件：删除记录 + MinIO 对象 + 临时表（POST /api/upload/delete，PRD 3.1.5） */
+export async function removeAttachmentRemote(attachmentId: string): Promise<void> {
+  await api.post<{ code: number }>('/upload/delete', { attachment_id: attachmentId })
+}
+
+/** multipart 通用上传（JSON request 不适用，需显式 FormData + Authorization） */
+async function multipartUpload(
+  path: string,
+  fields: Record<string, string | Blob>,
+): Promise<UploadedAttachment> {
   const fd = new FormData()
-  fd.append('file', file)
-  fd.append('session_id', sessionId)
+  for (const [k, v] of Object.entries(fields)) fd.append(k, v)
 
   const token = getToken()
-  const res = await fetch(`${API_BASE}/upload`, {
+  const res = await fetch(`${API_BASE}${path}`, {
     method: 'POST',
     headers: token ? { Authorization: `Bearer ${token}` } : {},
     body: fd,
@@ -100,6 +121,45 @@ async function uploadOne(file: File, sessionId: string): Promise<UploadedAttachm
     throw new ApiError('服务端响应缺少附件信息', res.status, -1)
   }
   return payload.data
+}
+
+/**
+ * 附件解析状态轮询（2s，参考 GET /api/upload/{id}/status 契约）：
+ * 状态为 uploading/parsing 时轮询直到 ready/failed，把解析结果通过 onUpdate 回填。
+ * 草稿卡与消息流 attachment block（替换后）共用。
+ */
+export function useAttachmentPolling(
+  attachmentId: string,
+  active: boolean,
+  onUpdate: (patch: Partial<AttachmentContent>) => void,
+) {
+  useEffect(() => {
+    if (!active) return
+    let alive = true
+    let timer: ReturnType<typeof setInterval> | null = null
+    const tick = async () => {
+      try {
+        const st = await api.get<AttachmentStatusResponse>(`/upload/${attachmentId}/status`)
+        if (!alive) return
+        onUpdate({
+          status: st.status,
+          file_size: st.file_size ?? 0,
+          error: st.error ?? undefined,
+          sheet_name: st.parsed_schema?.sheet_name,
+          row_count: st.parsed_schema?.row_count,
+          columns: st.parsed_schema?.columns?.map(({ name, dtype }) => ({ name, dtype })),
+        })
+      } catch {
+        /* 轮询失败忽略，下轮重试 */
+      }
+    }
+    void tick()
+    timer = setInterval(tick, 2000)
+    return () => {
+      alive = false
+      if (timer) clearInterval(timer)
+    }
+  }, [attachmentId, active, onUpdate])
 }
 
 /**
