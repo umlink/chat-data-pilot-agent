@@ -1,27 +1,42 @@
 import { create } from 'zustand'
-import type { Block, Message, SessionInfo } from '@/types/message'
+import type { AttachmentContent, Block, Message, SessionInfo } from '@/types/message'
 
 interface ChatState {
+  /** 当前查看的会话 id（路由 /session/:id 同步） */
   sessionId: string | null
-  messages: Message[]
+  /** 多会话消息缓存：会话切换不中断后台流，返回时可见已完成的结果 */
+  messagesBySession: Record<string, Message[]>
   sessions: SessionInfo[]
-  sending: boolean
+  /** 每会话是否正在等待 SSE 回复（key=sessionId） */
+  sending: Record<string, boolean>
+  /** 附件草稿（上传成功但未发送；发送成功或移除后清掉） */
+  attachments: AttachmentContent[]
 
   setSessionId: (id: string | null) => void
-  setMessages: (messages: Message[]) => void
+  /** 加载某会话历史（切换时调用） */
+  setSessionMessages: (sessionId: string, messages: Message[]) => void
+  /** 取当前会话消息数组（供组件 selector） */
+  getCurrentMessages: () => Message[]
   setSessions: (sessions: SessionInfo[]) => void
-  setSending: (v: boolean) => void
+  setSending: (sessionId: string, v: boolean) => void
 
-  appendMessage: (msg: Message) => void
+  appendMessage: (sessionId: string, msg: Message) => void
+  /** 按 id 整体替换单条消息（execute 决策后服务端返回完整 Message）；无则忽略 */
+  replaceMessage: (sessionId: string, msg: Message) => void
   /** 按 block.id upsert（新增或替换） */
-  upsertBlock: (messageId: string, block: Block) => void
+  upsertBlock: (sessionId: string, messageId: string, block: Block) => void
   /** JSON Merge Patch 风格浅合并到 block.content */
-  patchBlock: (messageId: string, blockId: string, patch: Record<string, unknown>) => void
+  patchBlock: (sessionId: string, messageId: string, blockId: string, patch: Record<string, unknown>) => void
   /** text block 增量追加 */
-  appendTextToken: (messageId: string, blockId: string, text: string) => void
+  appendTextToken: (sessionId: string, messageId: string, blockId: string, text: string) => void
   /** 更新 block 状态 */
-  setBlockStatus: (messageId: string, blockId: string, status: Block['status']) => void
-  setMessageMetadata: (messageId: string, patch: Record<string, unknown>) => void
+  setBlockStatus: (sessionId: string, messageId: string, blockId: string, status: Block['status']) => void
+  setMessageMetadata: (sessionId: string, messageId: string, patch: Record<string, unknown>) => void
+
+  addAttachment: (attachment: AttachmentContent) => void
+  updateAttachment: (attachmentId: string, patch: Partial<AttachmentContent>) => void
+  removeAttachment: (attachmentId: string) => void
+  clearAttachments: () => void
 }
 
 function updateBlockInList(blocks: Block[], block: Block): Block[] {
@@ -34,78 +49,137 @@ function updateBlockInList(blocks: Block[], block: Block): Block[] {
   return [...blocks, block]
 }
 
-export const useChatStore = create<ChatState>((set) => ({
+export const useChatStore = create<ChatState>((set, get) => ({
   sessionId: null,
-  messages: [],
+  messagesBySession: {},
   sessions: [],
-  sending: false,
+  sending: {},
+  attachments: [],
 
   setSessionId: (id) => set({ sessionId: id }),
-  setMessages: (messages) => set({ messages }),
+  setSessionMessages: (sessionId, messages) =>
+    set((s) => ({ messagesBySession: { ...s.messagesBySession, [sessionId]: messages } })),
+  getCurrentMessages: () => {
+    const sid = get().sessionId
+    return sid ? get().messagesBySession[sid] ?? [] : []
+  },
   setSessions: (sessions) => set({ sessions }),
-  setSending: (v) => set({ sending: v }),
+  setSending: (sessionId, v) => set((s) => ({ sending: { ...s.sending, [sessionId]: v } })),
 
-  appendMessage: (msg) =>
-    set((s) => ({ messages: [...s.messages, msg] })),
+  appendMessage: (sessionId, msg) =>
+    set((s) => {
+      const list = s.messagesBySession[sessionId] ?? []
+      return { messagesBySession: { ...s.messagesBySession, [sessionId]: [...list, msg] } }
+    }),
 
-  upsertBlock: (messageId, block) =>
+  replaceMessage: (sessionId, msg) =>
+    set((s) => {
+      const list = s.messagesBySession[sessionId]
+      if (!list) return s
+      return {
+        messagesBySession: {
+          ...s.messagesBySession,
+          [sessionId]: list.map((m) => (m.id === msg.id ? msg : m)),
+        },
+      }
+    }),
+
+  upsertBlock: (sessionId, messageId, block) =>
+    set((s) => {
+      const list = s.messagesBySession[sessionId]
+      if (!list) return s
+      return {
+        messagesBySession: {
+          ...s.messagesBySession,
+          [sessionId]: list.map((m) =>
+            m.id === messageId ? { ...m, blocks: updateBlockInList(m.blocks, block) } : m,
+          ),
+        },
+      }
+    }),
+
+  patchBlock: (sessionId, messageId, blockId, patch) =>
+    set((s) => {
+      const list = s.messagesBySession[sessionId]
+      if (!list) return s
+      return {
+        messagesBySession: {
+          ...s.messagesBySession,
+          [sessionId]: list.map((m) =>
+            m.id === messageId
+              ? {
+                  ...m,
+                  blocks: m.blocks.map((b) =>
+                    b.id === blockId ? { ...b, content: { ...b.content, ...patch } } : b,
+                  ),
+                }
+              : m,
+          ),
+        },
+      }
+    }),
+
+  appendTextToken: (sessionId, messageId, blockId, text) =>
+    set((s) => {
+      const list = s.messagesBySession[sessionId]
+      if (!list) return s
+      return {
+        messagesBySession: {
+          ...s.messagesBySession,
+          [sessionId]: list.map((m) =>
+            m.id === messageId
+              ? {
+                  ...m,
+                  blocks: m.blocks.map((b) =>
+                    b.id === blockId
+                      ? { ...b, content: { ...b.content, text: String(b.content.text ?? '') + text } }
+                      : b,
+                  ),
+                }
+              : m,
+          ),
+        },
+      }
+    }),
+
+  setBlockStatus: (sessionId, messageId, blockId, status) =>
+    set((s) => {
+      const list = s.messagesBySession[sessionId]
+      if (!list) return s
+      return {
+        messagesBySession: {
+          ...s.messagesBySession,
+          [sessionId]: list.map((m) =>
+            m.id === messageId
+              ? { ...m, blocks: m.blocks.map((b) => (b.id === blockId ? { ...b, status } : b)) }
+              : m,
+          ),
+        },
+      }
+    }),
+
+  setMessageMetadata: (sessionId, messageId, patch) =>
+    set((s) => {
+      const list = s.messagesBySession[sessionId]
+      if (!list) return s
+      return {
+        messagesBySession: {
+          ...s.messagesBySession,
+          [sessionId]: list.map((m) =>
+            m.id === messageId ? { ...m, metadata: { ...m.metadata, ...patch } } : m,
+          ),
+        },
+      }
+    }),
+
+  addAttachment: (attachment) => set((s) => ({ attachments: [...s.attachments, attachment] })),
+  updateAttachment: (attachmentId, patch) =>
     set((s) => ({
-      messages: s.messages.map((m) =>
-        m.id === messageId ? { ...m, blocks: updateBlockInList(m.blocks, block) } : m,
+      attachments: s.attachments.map((a) =>
+        a.attachment_id === attachmentId ? { ...a, ...patch } : a,
       ),
     })),
-
-  patchBlock: (messageId, blockId, patch) =>
-    set((s) => ({
-      messages: s.messages.map((m) =>
-        m.id === messageId
-          ? {
-              ...m,
-              blocks: m.blocks.map((b) =>
-                b.id === blockId
-                  ? { ...b, content: { ...b.content, ...patch } }
-                  : b,
-              ),
-            }
-          : m,
-      ),
-    })),
-
-  appendTextToken: (messageId, blockId, text) =>
-    set((s) => ({
-      messages: s.messages.map((m) =>
-        m.id === messageId
-          ? {
-              ...m,
-              blocks: m.blocks.map((b) =>
-                b.id === blockId
-                  ? {
-                      ...b,
-                      content: { ...b.content, text: String(b.content.text ?? '') + text },
-                    }
-                  : b,
-              ),
-            }
-          : m,
-      ),
-    })),
-
-  setBlockStatus: (messageId, blockId, status) =>
-    set((s) => ({
-      messages: s.messages.map((m) =>
-        m.id === messageId
-          ? {
-              ...m,
-              blocks: m.blocks.map((b) => (b.id === blockId ? { ...b, status } : b)),
-            }
-          : m,
-      ),
-    })),
-
-  setMessageMetadata: (messageId, patch) =>
-    set((s) => ({
-      messages: s.messages.map((m) =>
-        m.id === messageId ? { ...m, metadata: { ...m.metadata, ...patch } } : m,
-      ),
-    })),
+  removeAttachment: (attachmentId) =>
+    set((s) => ({ attachments: s.attachments.filter((a) => a.attachment_id !== attachmentId) })),
+  clearAttachments: () => set({ attachments: [] }),
 }))

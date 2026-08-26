@@ -93,6 +93,10 @@ export interface ConfirmationContent {
   risk_level: 'high' | 'medium'
   confirmed?: boolean
   result_block_id?: string
+  /** 确认后执行所用的数据源（卡片生成时记录，避免落到默认数据源导致方言不匹配） */
+  datasource_id?: string | null
+  /** 目标数据源名称（仅展示用） */
+  datasource_name?: string | null
 }
 
 export interface InsightItem {

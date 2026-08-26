@@ -1,3 +1,4 @@
+import { useRef } from 'react'
 import {
   Bar,
   BarChart,
@@ -162,11 +163,98 @@ function ScatterPanel({ content }: { content: ChartContent }) {
   )
 }
 
+/** 把当前图表 SVG 序列化为文件并触发下载（PNG via canvas / SVG 直接下载） */
+function useChartExport(chartRef: React.RefObject<HTMLDivElement | null>, title: string) {
+  const downloadSvg = () => {
+    const svg = chartRef.current?.querySelector('svg')
+    if (!svg) return
+    const clone = svg.cloneNode(true) as SVGElement
+    clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
+    const blob = new Blob([clone.outerHTML], { type: 'image/svg+xml;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${title}.svg`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const downloadPng = () => {
+    const svg = chartRef.current?.querySelector('svg')
+    if (!svg) return
+    const clone = svg.cloneNode(true) as SVGElement
+    clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
+    const bbox = svg.getBoundingClientRect()
+    const w = bbox.width || 800
+    const h = bbox.height || 400
+    clone.setAttribute('width', String(w))
+    clone.setAttribute('height', String(h))
+    const svgStr = new XMLSerializer().serializeToString(clone)
+    const img = new Image()
+    const blob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    img.onload = () => {
+      const canvas = document.createElement('canvas')
+      canvas.width = w * 2
+      canvas.height = h * 2
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return
+      ctx.scale(2, 2)
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(0, 0, w, h)
+      ctx.drawImage(img, 0, 0, w, h)
+      canvas.toBlob((pngBlob) => {
+        if (!pngBlob) return
+        const pngUrl = URL.createObjectURL(pngBlob)
+        const a = document.createElement('a')
+        a.href = pngUrl
+        a.download = `${title}.png`
+        a.click()
+        URL.revokeObjectURL(pngUrl)
+      }, 'image/png')
+      URL.revokeObjectURL(url)
+    }
+    img.src = url
+  }
+
+  return { downloadSvg, downloadPng }
+}
+
+function ExportButtons({
+  chartRef,
+  title,
+}: {
+  chartRef: React.RefObject<HTMLDivElement | null>
+  title: string
+}) {
+  const { downloadSvg, downloadPng } = useChartExport(chartRef, title)
+  return (
+    <div className="absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+      <button
+        onClick={downloadPng}
+        className="rounded bg-background/80 px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground"
+        title="下载 PNG"
+      >
+        PNG
+      </button>
+      <button
+        onClick={downloadSvg}
+        className="rounded bg-background/80 px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground"
+        title="下载 SVG"
+      >
+        SVG
+      </button>
+    </div>
+  )
+}
+
 /**
  * 图表卡片内层（docs/UI设计规范.md 3.7）。
  * heatmap 离开 recharts 原生能力范围，M4 由增强面板补齐，此处保留降级占位。
  */
 export function ChartBlock({ content }: Props) {
+  const chartRef = useRef<HTMLDivElement>(null)
+  const title = content.title || '图表导出'
   const hasData =
     (content.series.length > 0 && content.series[0].x.length > 0) ||
     (content.matrix?.values.length ?? 0) > 0
@@ -185,7 +273,8 @@ export function ChartBlock({ content }: Props) {
     )
   }
   return (
-    <div className="w-full">
+    <div ref={chartRef} className="group relative w-full">
+      <ExportButtons chartRef={chartRef} title={title} />
       {content.chart_type === 'bar' && <BarPanel content={content} />}
       {content.chart_type === 'line' && <LinePanel content={content} />}
       {content.chart_type === 'pie' && <PiePanel content={content} />}

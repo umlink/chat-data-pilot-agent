@@ -1,6 +1,6 @@
 import { Outlet, useNavigate } from 'react-router-dom'
 import { clearToken } from '@/lib/api'
-import { cancelRunningStream } from '@/hooks/useChat'
+import { cancelAllStreams } from '@/hooks/useChat'
 import { Header } from '@/components/layout/Header'
 import { Sidebar } from '@/components/layout/Sidebar'
 
@@ -8,7 +8,7 @@ import { Sidebar } from '@/components/layout/Sidebar'
 export function AppShell() {
   const navigate = useNavigate()
   const logout = () => {
-    cancelRunningStream() // 登出时取消进行中的 SSE
+    cancelAllStreams() // 登出时取消所有进行中的 SSE
     clearToken()
     navigate('/login', { replace: true })
   }

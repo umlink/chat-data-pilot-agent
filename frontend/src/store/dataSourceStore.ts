@@ -1,9 +1,13 @@
 import { create } from 'zustand'
 
+/** 数据源出参（镜像 backend/app/schemas/datasource.py DatasourceOut；config 敏感字段已掩码）。 */
 export interface DataSourceInfo {
   id: string
   name: string
   type: string
+  config: Record<string, unknown>
+  created_at?: string | null
+  updated_at?: string | null
 }
 
 interface DataSourceState {

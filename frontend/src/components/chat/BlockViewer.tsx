@@ -1,5 +1,6 @@
 import { lazy, Suspense } from 'react'
 import type {
+  AttachmentContent,
   ChartContent,
   CodeExecution,
   ConfirmationContent,
@@ -10,6 +11,10 @@ import type {
   TableContent,
 } from '@/types/message'
 import type { Block } from '@/types/message'
+import { AttachmentBlock } from './AttachmentBlock'
+import { ConfirmationBlock } from './ConfirmationBlock'
+import { MarkdownText } from './MarkdownText'
+import { TableBlock } from './TableBlock'
 
 // ChartBlock（recharts ~120KB gzip）仅在出现 chart block 时懒加载
 const ChartBlock = lazy(() =>
@@ -32,18 +37,14 @@ function ChartSkeleton() {
 
 /**
  * Block 渲染（docs/UI设计规范.md 4 与 docs/Block与协议规范.md 第 2 章）。
- * attachment / confirmation 交互动作在 M2 / M4 逐步替换为专业组件。
+ * confirmation / attachment / table 交互组件拆在 chat/ 子文件中。
  */
 export function BlockViewer({ block }: { block: Block }) {
   const c = block.content
 
   switch (block.type) {
     case 'text':
-      return (
-        <div className="whitespace-pre-wrap break-words text-[13px] leading-6 text-foreground">
-          {String(c.text ?? '')}
-        </div>
-      )
+      return <MarkdownText text={String(c.text ?? '')} />
 
     case 'code': {
       const exec = c.execution as CodeExecution | undefined
@@ -62,45 +63,8 @@ export function BlockViewer({ block }: { block: Block }) {
       )
     }
 
-    case 'table': {
-      const content = c as unknown as TableContent
-      const rows = content.rows ?? []
-      return (
-        <div className="overflow-hidden rounded-lg border bg-card shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="bg-muted">
-                {content.columns.map((col) => (
-                  <th
-                    key={col.key}
-                    className="border-b px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"
-                  >
-                    {col.label}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.slice(0, 50).map((row, i) => (
-                <tr key={i} className="border-b text-foreground last:border-b-0">
-                  {content.columns.map((col) => (
-                    <td key={col.key} className="px-3 py-2">
-                      {String(row[col.key] ?? '')}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <div className="flex items-center justify-between border-t bg-background px-3 py-1.5 text-[11px]">
-            <span className="text-muted-foreground">
-              {rows.length > 50 ? `已显示前 50 行，共 ${content.total} 行` : `共 ${content.total} 行`}
-            </span>
-            <button className="font-medium underline underline-offset-2">导出 CSV</button>
-          </div>
-        </div>
-      )
-    }
+    case 'table':
+      return <TableBlock content={c as unknown as TableContent} />
 
     case 'chart': {
       const content = c as unknown as ChartContent
@@ -118,20 +82,8 @@ export function BlockViewer({ block }: { block: Block }) {
       )
     }
 
-    case 'confirmation': {
-      const content = c as unknown as ConfirmationContent
-      return (
-        <div className="rounded-lg border border-warning bg-warning-bg p-3">
-          <div className="text-sm font-medium text-foreground">{content.title}</div>
-          <p className="mt-0.5 text-[13px] text-muted-foreground">{content.description}</p>
-          {content.sql && (
-            <pre className="mt-2 overflow-x-auto rounded-md bg-muted p-2 font-mono text-xs">
-              {content.sql}
-            </pre>
-          )}
-        </div>
-      )
-    }
+    case 'confirmation':
+      return <ConfirmationBlock block={block} content={c as unknown as ConfirmationContent} />
 
     case 'insights': {
       const items = (c.items as InsightItem[]) ?? []
@@ -191,11 +143,7 @@ export function BlockViewer({ block }: { block: Block }) {
     }
 
     case 'attachment':
-      return (
-        <div className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-[11px] text-foreground">
-          📎 {String(c.file_name ?? '')}（{String(c.status ?? '')}）
-        </div>
-      )
+      return <AttachmentBlock content={c as unknown as AttachmentContent} />
 
     default:
       return null

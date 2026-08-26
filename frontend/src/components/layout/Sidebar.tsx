@@ -1,23 +1,23 @@
 import { useEffect, useState } from 'react'
-import { NavLink } from 'react-router-dom'
-import { Activity, Database, Plus, Search, Settings2, Trash2 } from 'lucide-react'
+import { NavLink, useNavigate } from 'react-router-dom'
+import { Activity, Database, FileText, Plus, Search, Settings2, Trash2 } from 'lucide-react'
 import { api, getUsername } from '@/lib/api'
-import { cancelRunningStream } from '@/hooks/useChat'
+import { cancelStream } from '@/hooks/useChat'
 import { useChatStore } from '@/store/chatStore'
-import type { Message, SessionInfo } from '@/types/message'
+import type { SessionInfo } from '@/types/message'
 
 const NAV = [
   { to: '/datasources', label: '数据源', icon: Database },
+  { to: '/templates', label: '模板', icon: FileText },
   { to: '/config', label: '管理后台', icon: Settings2, badge: true },
 ]
 
 /** 左侧 Sidebar 260px（docs/UI设计规范.md 3.13 侧边栏） */
 export function Sidebar() {
+  const navigate = useNavigate()
   const sessions = useChatStore((s) => s.sessions)
   const sessionId = useChatStore((s) => s.sessionId)
   const setSessions = useChatStore((s) => s.setSessions)
-  const setSessionId = useChatStore((s) => s.setSessionId)
-  const setMessages = useChatStore((s) => s.setMessages)
   const [keyword, setKeyword] = useState('')
   const username = getUsername() ?? '用户'
   const filtered = sessions.filter((s) =>
@@ -38,37 +38,26 @@ export function Sidebar() {
   }, [setSessions])
 
   const createSession = async () => {
-    cancelRunningStream() // 切换会话前取消进行中的 SSE（CLAUDE.md 5.4）
     try {
       const s = await api.post<SessionInfo>('/sessions', { title: '新对话' })
       setSessions([s, ...sessions])
-      setSessionId(s.id)
-      setMessages([])
+      navigate(`/session/${s.id}`) // 会话选中状态由路由承载（/session/:id）
     } catch {
       /* 后端未实现时忽略 */
     }
   }
 
-  const select = async (id: string) => {
-    cancelRunningStream() // 切换会话前取消进行中的 SSE（CLAUDE.md 5.4）
-    setSessionId(id)
-    try {
-      const msgs = await api.get<Message[]>(`/sessions/${id}/messages`)
-      setMessages(msgs)
-    } catch {
-      setMessages([])
-    }
+  const select = (id: string) => {
+    // 仅导航；loading/取消 SSE 由 ChatArea 随路由变化统一处理
+    navigate(`/session/${id}`)
   }
 
   const remove = async (id: string) => {
-    cancelRunningStream()
+    cancelStream(id) // 仅取消被删除会话的流，不影响其它会话
     try {
       await api.post('/sessions/delete', { id })
       setSessions(sessions.filter((x) => x.id !== id))
-      if (sessionId === id) {
-        setSessionId(null)
-        setMessages([])
-      }
+      if (sessionId === id) navigate('/')
     } catch {
       /* ignore */
     }

@@ -4,7 +4,7 @@
  * block_end / task_status / error / done；id 单调递增；忽略注释（心跳）。
  * VITE_USE_MOCK=true 时先路由到 lib/mock 的流式回放。
  */
-import { getToken } from '@/lib/api'
+import { clearToken, getToken, redirectToLogin } from '@/lib/api'
 import { USE_MOCK, mockStream } from '@/lib/mock'
 
 export interface SSEFrame {
@@ -39,12 +39,24 @@ export async function streamSSE(
   const token = getToken()
   if (token) headers.Authorization = `Bearer ${token}`
 
-  const res = await fetch(url, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(body),
-    signal,
-  })
+  let res: Response
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+      signal,
+    })
+  } catch (e) {
+    // 网络级失败（断网 / 后端未启动 / CORS）：抛中文可读错误，由 onError 呈现
+    if (e instanceof Error && e.name === 'AbortError') throw e
+    throw new ApiSseError('网络异常：无法连接服务器，请检查网络或后端服务', 0)
+  }
+  // SSE 也走全局 401 登出（token 失效同样踢回登录页）
+  if (res.status === 401 && token) {
+    clearToken()
+    redirectToLogin()
+  }
   if (!res.ok || !res.body) {
     throw new ApiSseError(`SSE 请求失败（HTTP ${res.status}）`, res.status)
   }

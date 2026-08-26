@@ -31,6 +31,29 @@ export function setUsername(name: string): void {
   localStorage.setItem(USERNAME_KEY, name)
 }
 
+/** 跳到登录页（401 自动登出用）；已在该页则不重复跳转 */
+export function redirectToLogin(): void {
+  if (window.location.pathname !== '/login') {
+    window.location.replace('/login')
+  }
+}
+
+/**
+ * 服务端校验当前 token：有效返回 true；401（失效/过期）清 token 返回 false。
+ * 网络异常等非鉴权错误返回 true（后端临时不可达不该踢掉已登录用户，
+ * 后续请求会各自给出错误提示）。
+ */
+export async function verifySession(): Promise<boolean> {
+  if (!getToken()) return false
+  try {
+    await api.get('/auth/me', { auth: true })
+    return true
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 401) return false
+    return true
+  }
+}
+
 export class ApiError extends Error {
   code: number
   status: number
@@ -72,12 +95,26 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     if (token) headers.Authorization = `Bearer ${token}`
   }
 
-  const res = await fetch(`${API_BASE}${path}`, {
-    method,
-    headers,
-    body: body === undefined ? undefined : JSON.stringify(body),
-    signal,
-  })
+  let res: Response
+  try {
+    res = await fetch(`${API_BASE}${path}`, {
+      method,
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal,
+    })
+  } catch (e) {
+    // 网络级失败（断网 / 后端未启动 / CORS）：裸 TypeError('Failed to fetch') 不可读，转中文提示
+    if (e instanceof Error && e.name === 'AbortError') throw e
+    throw new ApiError('网络异常：无法连接服务器，请检查网络或后端服务', 0, -1)
+  }
+
+  // 全局 401：携带 token 请求被拒 = token 失效/过期 → 清 token 回登录页
+  // （登录接口自身 auth:false，不受影响）
+  if (res.status === 401 && auth && getToken()) {
+    clearToken()
+    redirectToLogin()
+  }
 
   let payload: ApiResponse<T> | null = null
   try {
@@ -99,4 +136,67 @@ export const api = {
   get: <T>(path: string, opts?: RequestOptions) => request<T>(path, { ...opts, method: 'GET' }),
   post: <T>(path: string, body?: unknown, opts?: RequestOptions) =>
     request<T>(path, { ...opts, method: 'POST', body }),
+}
+
+interface DownloadOptions {
+  /** 查询参数；logs/export 等 POST+query 类下载用 */
+  query?: Record<string, string | number | boolean | undefined>
+  /** 请求体（JSON）；export 等 POST+body 类下载用 */
+  body?: unknown
+  method?: 'GET' | 'POST'
+}
+
+/**
+ * 带鉴权的二进制文件流下载（/api/export、/api/logs/export 返回 StreamingResponse，
+ * 不走统一信封，见 docs/技术方案设计 2.3）。失败时尝试解析信封读取中文 message。
+ */
+export async function downloadFile(path: string, filename: string, opts: DownloadOptions = {}): Promise<void> {
+  const usePost = opts.body !== undefined || opts.query !== undefined
+  const method = opts.method ?? (usePost ? 'POST' : 'GET')
+
+  let url = `${API_BASE}${path}`
+  if (opts.query) {
+    const params = new URLSearchParams()
+    for (const [k, v] of Object.entries(opts.query)) {
+      if (v !== undefined && v !== '') params.set(k, String(v))
+    }
+    const qs = params.toString()
+    if (qs) url += `?${qs}`
+  }
+
+  const headers: Record<string, string> = { Accept: '*/*' }
+  if (opts.body !== undefined) headers['Content-Type'] = 'application/json'
+  const token = getToken()
+  if (token) headers.Authorization = `Bearer ${token}`
+
+  let res: Response
+  try {
+    res = await fetch(url, {
+      method,
+      headers,
+      body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
+    })
+  } catch {
+    throw new ApiError('网络异常：无法连接服务器，请检查网络或后端服务', 0, -1)
+  }
+  if (!res.ok) {
+    let message = `下载失败（HTTP ${res.status}）`
+    try {
+      const payload = (await res.json()) as { message?: string }
+      if (payload?.message) message = payload.message
+    } catch {
+      /* 错误体非 JSON，保留默认文案 */
+    }
+    throw new ApiError(message, res.status, res.status)
+  }
+
+  const blob = await res.blob()
+  const objectUrl = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = objectUrl
+  a.download = filename || 'download'
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(objectUrl)
 }

@@ -1,6 +1,56 @@
-import { Bot } from 'lucide-react'
+import { useState } from 'react'
+import { Bot, ThumbsDown, ThumbsUp } from 'lucide-react'
+import { api } from '@/lib/api'
 import type { Message } from '@/types/message'
 import { BlockViewer } from './BlockViewer'
+
+/** 单条 assistant 消息的反馈按钮 */
+function FeedbackButtons({ messageId }: { messageId: string }) {
+  const [rating, setRating] = useState<1 | -1 | null>(null)
+  const [pending, setPending] = useState(false)
+
+  const rate = async (value: 1 | -1) => {
+    if (pending) return
+    setPending(true)
+    // 再次点击同个按钮 = 取消
+    const next = rating === value ? null : value
+    setRating(next)
+    try {
+      if (next !== null) {
+        await api.post('/chat/feedback', { message_id: messageId, rating: next })
+      }
+    } catch {
+      // 静默失败，不影响阅读
+    } finally {
+      setPending(false)
+    }
+  }
+
+  return (
+    <div className="mt-2 flex items-center gap-1 text-muted-foreground">
+      <button
+        onClick={() => void rate(1)}
+        disabled={pending}
+        aria-label="有帮助"
+        className={`rounded p-1 transition-colors hover:bg-accent hover:text-foreground ${
+          rating === 1 ? 'text-success' : ''
+        }`}
+      >
+        <ThumbsUp size={13} />
+      </button>
+      <button
+        onClick={() => void rate(-1)}
+        disabled={pending}
+        aria-label="没帮助"
+        className={`rounded p-1 transition-colors hover:bg-accent hover:text-foreground ${
+          rating === -1 ? 'text-error' : ''
+        }`}
+      >
+        <ThumbsDown size={13} />
+      </button>
+    </div>
+  )
+}
 
 /** 消息流：用户气泡（深色右对齐） + AI 消息（头像+名称+Block 流） （docs/UI设计规范.md 3.4） */
 export function MessageList({ messages, sending }: { messages: Message[]; sending: boolean }) {
@@ -21,6 +71,10 @@ export function MessageList({ messages, sending }: { messages: Message[]; sendin
         const usage = m.metadata.usage as Record<string, unknown> | undefined
         const isTyping =
           sending && m.blocks.length > 0 && m.blocks.every((b) => b.status === 'running')
+        const hasError = m.blocks.some((b) => b.status === 'failed' || b.type === 'error')
+        // 流结束（非 running 且非空）才显示反馈按钮
+        const showFeedback =
+          !isTyping && m.blocks.length > 0 && !hasError
 
         return (
           <div key={m.id} className="flex">
@@ -53,6 +107,8 @@ export function MessageList({ messages, sending }: { messages: Message[]; sendin
                   ))}
                 </div>
               )}
+
+              {showFeedback && <FeedbackButtons messageId={m.id} />}
             </div>
           </div>
         )
