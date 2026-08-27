@@ -8,7 +8,8 @@
 M3 范围：
 - 连接测试：postgresql（asyncpg）、mysql（aiomysql，未安装时给出依赖提示）、
   sqlite（aiosqlite，同上）；文件型（csv/excel/json）返回“需通过附件上传导入”提示。
-- Schema 提取与预览：仅实现 postgresql，其余类型抛 NotImplementedError（清晰中文）。
+- Schema 提取与预览：支持 postgresql 与 mysql（information_schema 查询 + 每表 3 行采样），
+  其余类型抛 NotImplementedError（清晰中文）。
 """
 import json
 import logging
@@ -24,7 +25,7 @@ from app.schemas.datasource import FILE_TYPES, SECRET_CONFIG_FIELDS
 logger = logging.getLogger("datapilot.data")
 
 # 连接错误脱敏：dsn/url 可能内嵌密码，回显前掩掉 password=... 段，避免凭据泄漏到日志与响应
-_PASSWORD_RE = re.compile(r"(?i)(password|passwd|pwd)=([^\\s'\"@,]+)")
+_PASSWORD_RE = re.compile(r"(?i)(password|passwd|pwd)=([^\s'\"@,]+)")
 
 # 统一连接超时（秒）
 CONNECT_TIMEOUT = 10

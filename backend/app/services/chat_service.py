@@ -344,7 +344,7 @@ class ChatService:
 
     # ---------- 数据源 schema 注入（契约 4.4） ----------
     async def _resolve_schema(self, user_id, datasource_id: str | None) -> str:
-        """取主数据源（或指定数据源）的表结构文本；异常/非 PostgreSQL 时静默跳过。
+        """取主数据源（或指定数据源）的表结构文本；异常/非 PostgreSQL 或 MySQL 时静默跳过。
 
         契约 4.4 要求注入表名/列名/类型/注释 + 每表 3 行采样；MVP 只注入表结构，
         采样数据属于「超出预算优先压缩」项（见契约 4.4 上下文预算），故省略。

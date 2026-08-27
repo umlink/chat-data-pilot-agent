@@ -51,7 +51,7 @@ _ATT_TABLE_RE = re.compile(r"\batt_[A-Za-z0-9-]+", re.IGNORECASE)
 # SQLite 元数据/发现类语句（附件引擎专用）：AI 用它们列出附件表清单 / 查看表结构
 _SQLITE_META_RE = re.compile(r"sqlite_master|\bpragma\b", re.IGNORECASE)
 # 连接/执行错误脱敏：dsn/url 可能内嵌密码，回显与日志前掩掉 password=... 段
-_PASSWORD_RE = re.compile(r"(?i)(password|passwd|pwd)=([^\\s'\"@,]+)")
+_PASSWORD_RE = re.compile(r"(?i)(password|passwd|pwd)=([^\s'\"@,]+)")
 
 
 def _safe_error(exc: BaseException) -> str:
@@ -398,7 +398,7 @@ class SqlEngine:
             if truncated:
                 # 契约 2.3：total 为截断前真实行数；count 包装失败时回退为已取回行数（至少这么多）
                 try:
-                    total = await conn.fetchval(f"SELECT count(*) FROM ({sql}) AS _t")
+                    total = await conn.fetchval(f"SELECT count(*) FROM ({sql.strip().rstrip(';')}) AS _t")
                 except Exception:
                     pass
             return {
