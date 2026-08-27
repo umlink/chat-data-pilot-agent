@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { Activity, Database, FileText, Pencil, Plus, Search, Settings2, Trash2 } from 'lucide-react'
 import { api, getUsername } from '@/lib/api'
@@ -21,6 +21,9 @@ export function Sidebar() {
   const [keyword, setKeyword] = useState('')
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
+  // 同步跟踪当前重命名会话：Escape 取消时输入框卸载触发 onBlur→commitRename，
+  // 若仍读 state 会把「取消」误提交为「保存」，故用 ref 即时置空做兜底
+  const renamingRef = useRef<string | null>(null)
   const username = getUsername() ?? '用户'
   const filtered = sessions.filter((s) =>
     s.title.toLowerCase().includes(keyword.toLowerCase()),
@@ -67,13 +70,15 @@ export function Sidebar() {
   }
 
   const startRename = (s: SessionInfo) => {
+    renamingRef.current = s.id
     setRenamingId(s.id)
     setRenameValue(s.title)
   }
 
   const commitRename = async () => {
-    const id = renamingId
-    if (!id) return
+    const id = renamingRef.current
+    if (!id) return // 已取消（Escape）或未处于重命名态：不提交
+    renamingRef.current = null
     const title = renameValue.trim() || '新对话'
     setRenamingId(null)
     try {
@@ -152,7 +157,10 @@ export function Sidebar() {
                   onKeyDown={(e) => {
                     e.stopPropagation()
                     if (e.key === 'Enter') void commitRename()
-                    if (e.key === 'Escape') setRenamingId(null)
+                    if (e.key === 'Escape') {
+                      renamingRef.current = null // 先置空，避免卸载 onBlur 误提交
+                      setRenamingId(null)
+                    }
                   }}
                   aria-label="重命名会话"
                   className="min-w-0 flex-1 rounded border border-ring bg-background px-1.5 py-0.5 text-[13px] outline-none"
