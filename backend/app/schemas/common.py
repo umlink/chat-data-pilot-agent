@@ -119,6 +119,17 @@ class SuggestionsContent(BaseModel):
     items: list[SuggestionItem]
 
 
+class SourceItem(BaseModel):
+    """引用来源条目：数据源/表名/查询（契约 2.11 sources）。"""
+
+    label: str
+    sql: Optional[str] = None
+
+
+class SourcesContent(BaseModel):
+    items: list[SourceItem] = Field(default_factory=list)
+
+
 class ProgressStep(BaseModel):
     name: str
     status: Literal["pending", "running", "done", "failed"] = "pending"

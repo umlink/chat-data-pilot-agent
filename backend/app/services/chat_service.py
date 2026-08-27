@@ -73,6 +73,10 @@ SYSTEM_PROMPT = (
     "工作方式：问题缺少必要参数（时间范围、指标口径等）时先澄清再行动，不要臆测；"
     "澄清时先输出澄清问题文本，然后换行输出一行『可点击选项：』，其后每行一个选项（格式：编号 + 文案，如『1. 近 7 天』），"
     "选项文案会被用户直接点击发送，请确保选项完整可执行；"
+    "每次完成分析并输出结论后，同样换行输出一行『可点击选项：』，其后给出 2-3 个基于当前结果、可直接执行的下一步分析选项"
+    "（如按其他维度分组、生成图表、深入某条洞察），格式与澄清选项一致；"
+    "对话中用户可能用『改成/不是/换成/用上次/接着/那/它』等指代上一轮分析，先解析指代对象（表、口径、图表）"
+    "再基于上轮结果行动，例如『改成按周分组』= 对上一轮查询结果重新按周聚合，不要当成全新问题；"
     "需要数据先 run_sql（结果自动存为 table block）；统计计算用 run_python；"
     "适合可视化时用 create_chart。工具执行完，用中文总结结论、给出数据洞察。"
 )
@@ -113,6 +117,67 @@ def _suggestions_block(items: list[dict[str, str]]) -> dict[str, Any]:
     return {
         "id": str(uuid.uuid4()),
         "type": "suggestions",
+        "status": "completed",
+        "content": {"items": items},
+    }
+
+
+# 从 SQL 中提取 FROM / JOIN 引用的表名（跨方言去修饰符；多数据源场景保守取字面名）
+_TABLE_RE = re.compile(r"\b(?:FROM|JOIN)\s+([A-Za-z_][\w.$`\"]*)", re.IGNORECASE)
+
+
+def _extract_tables(sql: str) -> list[str]:
+    """提取 SQL 引用的表名并去重（按出现顺序）。"""
+    names: list[str] = []
+    for m in _TABLE_RE.finditer(sql):
+        name = m.group(1).strip("`\"")
+        if name.lower() in ("dual",):
+            continue
+        if name not in names:
+            names.append(name)
+    return names
+
+
+def _build_sources_block(
+    tctx: ToolCtx, datasource_label: str | None
+) -> dict[str, Any] | None:
+    """根据本回合工具执行轨迹确定性推导『数据来源』证据链（契约 2.11 sources）。
+
+    数据源 = run_sql 调用的 datasource（或会话所选/默认）；表名 = 各 SQL 的 FROM/JOIN 解析；
+    查询 = 本回合去重后的 SQL（run_sql 调用 + table/chart block 的 query）。
+    全部从已落库的 tctx 轨迹推导，不依赖 LLM 额外格式化。
+    """
+    sqls: list[str] = []
+    seen: set[str] = set()
+    for call in tctx.tool_calls:
+        if call.get("name") == "run_sql" and call.get("status") == "ok":
+            sql = str((call.get("arguments") or {}).get("sql") or "").strip()
+            if sql and sql not in seen:
+                seen.add(sql)
+                sqls.append(sql)
+    for b in tctx.blocks:
+        if b.get("type") in ("table", "chart"):
+            q = str((b.get("content") or {}).get("query") or "").strip()
+            if q and q not in seen:
+                seen.add(q)
+                sqls.append(q)
+    if not sqls and not datasource_label:
+        return None
+    items: list[dict[str, Any]] = []
+    if datasource_label:
+        items.append({"label": f"数据源：{datasource_label}"})
+    tables: list[str] = []
+    for sql in sqls:
+        for name in _extract_tables(sql):
+            if name not in tables:
+                tables.append(name)
+    for name in tables:
+        items.append({"label": name})
+    for i, sql in enumerate(sqls[:5], start=1):
+        items.append({"label": f"查询 {i}", "sql": sql})
+    return {
+        "id": str(uuid.uuid4()),
+        "type": "sources",
         "status": "completed",
         "content": {"items": items},
     }
@@ -334,6 +399,35 @@ class ChatService:
             )
         return "\n".join(lines)
 
+    async def _resolve_datasource_label(
+        self, user_id, datasource_id: str | None
+    ) -> str | None:
+        """解析数据源展示名（name（type）），用于 sources 证据链；失败/无权返回 None。"""
+        from app.models.datasource import Datasource
+
+        try:
+            async with SessionFactory() as db:
+                if datasource_id:
+                    try:
+                        ds = await db.get(Datasource, UUID(datasource_id))
+                    except ValueError:
+                        return None
+                    if ds is None or ds.user_id != user_id:
+                        return None
+                else:
+                    result = await db.execute(
+                        select(Datasource)
+                        .where(Datasource.user_id == user_id)
+                        .order_by(Datasource.created_at.asc())
+                        .limit(1)
+                    )
+                    ds = result.scalar_one_or_none()
+                    if ds is None:
+                        return None
+            return f"{ds.name}（{ds.type}）"
+        except Exception:
+            return None
+
     # ---------- 主流程 ----------
     async def stream(
         self,
@@ -486,7 +580,12 @@ class ChatService:
         metadata: dict[str, Any] = {"usage": usage_dict, "stop_reason": stop_reason}
         if tctx.tool_calls:
             metadata["tool_calls"] = tctx.tool_calls
+        # 数据来源证据链（契约 2.11 sources）：从工具执行轨迹确定性推导
+        datasource_label = await self._resolve_datasource_label(user_id, datasource_id)
+        sources_block = _build_sources_block(tctx, datasource_label)
         blocks = [text_block, *side_blocks]
+        if sources_block:
+            blocks.append(sources_block)
         if suggestion_items:
             blocks.append(_suggestions_block(suggestion_items))
         await self._persist_message(
@@ -494,6 +593,9 @@ class ChatService:
             metadata=metadata, message_id=message_id,
         )
         yield _block_end(text_block)
+        if sources_block:
+            yield _block_start(sources_block)
+            yield _block_end(sources_block)
         if suggestion_items:
             sug_block = blocks[-1]
             yield _block_start(sug_block)

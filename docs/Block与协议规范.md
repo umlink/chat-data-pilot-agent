@@ -32,7 +32,8 @@ interface Block {
 
 type BlockType =
   | 'text' | 'code' | 'table' | 'chart' | 'confirmation'
-  | 'insights' | 'suggestions' | 'progress' | 'error' | 'attachment';
+  | 'insights' | 'suggestions' | 'progress' | 'error' | 'attachment'
+  | 'sources';
 
 type BlockStatus =
   | 'pending' | 'running' | 'completed'
@@ -212,6 +213,24 @@ interface AttachmentContent {
 附件 block 的状态变更（替换/移除）通过 `POST /api/upload/{id}/block-state` 持久化到
 `messages.blocks`（body：`message_id`/`block_id`/`patch`，patch 键白名单且 `null` 表示清空
 该字段），与「不可变追加」不冲突——本类变更仅更新可更新字段（见 6.2 状态流转表）。
+
+### 2.11 sources（数据来源 / 证据链）
+
+```typescript
+interface SourceItem {
+  label: string;          // 展示名：『数据源：xx』/ 表名 / 『查询 N』
+  sql?: string;           // 有则渲染为可点击「查看查询 SQL」
+}
+
+interface SourcesContent {
+  items: SourceItem[];
+}
+```
+
+- 由服务端**确定性推导**（不依赖 LLM 格式化）：数据源 = run_sql 使用的数据源（或会话所选/默认）；
+  表名 = 各 SQL 的 FROM/JOIN 解析去重；查询 = 本回合去重后的 SQL（run_sql 调用 + table/chart 的 query）。
+- 顺序：数据源 → 表名 → 查询；sql 项前端渲染为可点击 chip（复用 SqlQueryDialog）。
+- 仅在正常完成路径（非确认中断）追加，置于 text 与 table/chart 之后、suggestions 之前。
 
 ---
 
@@ -477,6 +496,7 @@ data: <JSON 载荷>
 | confirmation | ConfirmationBlock | 确认 / 取消 |
 | insights | InsightsBlock | 无 |
 | suggestions | SuggestionBlock | 点击发送 message |
+| sources | SourcesBlock | 点击查看查询 SQL |
 | progress | ProgressBlock | 取消 / 失败重试 |
 | error | ErrorBlock | 重试（retryable 时）、展开 detail |
 | attachment | AttachmentBlock | 预览 / 替换 / 移除 |
@@ -492,6 +512,7 @@ data: <JSON 载荷>
 | confirmation | pending -> approved / rejected（用户决策） | content.confirmed、content.result_block_id |
 | insights | completed | 无 |
 | suggestions | completed | 无 |
+| sources | completed | 无 |
 | progress | running -> completed / failed / cancelled | content.percent、current_step、steps[].status |
 | error | completed（终态，内容即错误） | 无 |
 | attachment | uploading -> parsing -> ready / failed | content.status 及解析结果字段 |
