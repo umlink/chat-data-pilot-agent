@@ -52,7 +52,7 @@ export function ChatArea() {
       setSessionId(null)
       return
     }
-    if (id === sessionId) return
+    if (id === useChatStore.getState().sessionId) return
     setSessionId(id)
     // D1：切换会话不中断后台流。若目标会话正在流式（assistant 消息尚未落库），
     // 跳过 DB 快照回填、信任本地流式状态，避免覆盖导致进行中的回答丢失。
@@ -69,7 +69,9 @@ export function ChatArea() {
     return () => {
       alive = false
     }
-  }, [id, sessionId, setSessionId, setSessionMessages])
+    // 注意：deps 不含 sessionId —— setSessionId 会触发其变化导致 effect cleanup，
+    // 进而使 alive 立即失效、历史加载被跳过。effect 只需在路由 id 变化时运行。
+  }, [id, setSessionId, setSessionMessages])
 
   // 组件卸载（登出等）时取消所有流
   useEffect(() => () => cancelAllStreams(), [])
