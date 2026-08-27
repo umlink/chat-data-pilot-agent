@@ -117,8 +117,10 @@ class DataService:
             if ds_type == "sqlite":
                 return await self._test_sqlite(config)
         except Exception as exc:  # 连接失败 / 参数错误 / 驱动缺失统一收敛为可读错误
-            logger.warning("数据源连接测试失败：type=%s error=%s", ds_type, _PASSWORD_RE.sub(r"\1=***", str(exc)))
-            return {"ok": False, "error": _PASSWORD_RE.sub(r"\1=***", str(exc))[:300]}
+            # 裸 TimeoutError 等 str() 为空：兜底用异常类名，保证 last_error 不落空
+            msg = _PASSWORD_RE.sub(r"\1=***", str(exc)).strip() or type(exc).__name__
+            logger.warning("数据源连接测试失败：type=%s error=%s", ds_type, msg)
+            return {"ok": False, "error": msg[:300]}
         return {"ok": False, "error": f"暂不支持的数据源类型: {ds_type}"}
 
     async def _test_postgresql(self, config: dict[str, Any]) -> dict[str, Any]:

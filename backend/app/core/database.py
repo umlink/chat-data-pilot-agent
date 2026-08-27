@@ -27,6 +27,23 @@ async def init_db() -> None:
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # create_all 只建新表，不改已有表：对存量表补充新列（ADD COLUMN IF NOT EXISTS 幂等，
+        # 不丢数据）。正式迁移切到 Alembic 后此清单应随迁移文件清空。
+        await conn.execute(
+            text(
+                "ALTER TABLE datasources ADD COLUMN IF NOT EXISTS status VARCHAR(20) "
+                "NOT NULL DEFAULT 'unknown'"
+            )
+        )
+        await conn.execute(
+            text("ALTER TABLE datasources ADD COLUMN IF NOT EXISTS last_checked_at TIMESTAMPTZ")
+        )
+        await conn.execute(
+            text("ALTER TABLE datasources ADD COLUMN IF NOT EXISTS last_error VARCHAR(500)")
+        )
+        await conn.execute(
+            text("ALTER TABLE datasources ADD COLUMN IF NOT EXISTS server_version VARCHAR(50)")
+        )
 
 
 async def close_db() -> None:

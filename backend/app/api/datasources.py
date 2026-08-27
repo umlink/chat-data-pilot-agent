@@ -8,6 +8,7 @@
 - GET  /api/datasources/{id}/preview   预览前 N 行（校验归属）
 - GET  /api/datasources/{id}/schema    提取表结构（表清单/列/注释/采样，校验归属）
 """
+import datetime
 import logging
 from typing import Annotated
 from uuid import UUID
@@ -126,17 +127,30 @@ async def test_datasource_by_id(
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    """按已保存数据源测试连接：解密库中密文配置后直连（列表页「测试」按钮用）。"""
+    """按已保存数据源测试连接：解密库中密文配置后直连（列表页「测试」按钮用）。
+
+    结果写回状态列（PRD 3.2.3：手动测试与后台心跳同一份状态）。
+    """
     ds = await _get_owned_datasource(db, user, ds_id)
     try:
         config = decrypt_config(ds.config)
     except Exception as exc:
         # 密文无法用当前密钥解密（如密钥更换后旧密文未更新）→ 引导重新编辑保存
+        ds.status = "error"
+        ds.last_checked_at = datetime.datetime.now(datetime.timezone.utc)
+        ds.last_error = "凭据解密失败，请重新编辑保存"
+        await db.commit()
         raise HTTPException(
             status_code=400,
             detail="数据源凭据解密失败，请在编辑中重新输入密码保存后再试",
         ) from exc
     result = await _data_service.test_connection(ds.type, config)
+    ds.status = "ok" if result.get("ok") else "error"
+    ds.last_checked_at = datetime.datetime.now(datetime.timezone.utc)
+    ds.last_error = (result.get("error") or None) if not result.get("ok") else None
+    if result.get("server_version"):
+        ds.server_version = result["server_version"]
+    await db.commit()
     return ApiResponse(data=result, message="连接测试完成")
 
 

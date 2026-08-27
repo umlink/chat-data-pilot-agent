@@ -74,6 +74,11 @@ class DatasourceOut(BaseModel):
     name: str
     type: str
     config: dict[str, Any]
+    # 连接状态（PRD 3.2.3）：unknown / ok / error + 最后检测时间与失败原因（已脱敏）
+    status: str = "unknown"
+    last_checked_at: datetime.datetime | None = None
+    last_error: str | None = None
+    server_version: str | None = None
     created_at: datetime.datetime | None = None
     updated_at: datetime.datetime | None = None
 
