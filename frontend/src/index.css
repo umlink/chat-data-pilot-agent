@@ -44,13 +44,13 @@
   --sidebar-active-foreground: oklch(0.205 0 0);
 
   /* ---- DataPilot 扩展语义令牌（docs/UI设计规范.md 1.1） ---- */
-  --state-success: oklch(0.62 0.19 145);
+  --state-success: oklch(0.55 0.17 145);
   --state-success-bg: oklch(0.93 0.08 145);
-  --state-warning: oklch(0.75 0.18 75);
+  --state-warning: oklch(0.55 0.16 75);
   --state-warning-bg: oklch(0.95 0.06 80);
   --state-error: oklch(0.577 0.245 27.325);
   --state-error-bg: oklch(0.95 0.05 25);
-  --state-info: oklch(0.65 0.18 230);
+  --state-info: oklch(0.6 0.16 230);
   --state-info-bg: oklch(0.94 0.05 230);
   --code-bg: oklch(0.145 0 0);
   --code-fg: oklch(0.92 0 0);
@@ -172,6 +172,16 @@ html, body, #root {
   --sidebar-ring: oklch(0.556 0 0);
   --sidebar-active: oklch(0.32 0.06 50);
   --sidebar-active-foreground: oklch(0.985 0 0);
+
+  /* ---- DataPilot 扩展状态色（暗色：深底 + 亮文字，保证对比度） ---- */
+  --state-success: oklch(0.78 0.16 145);
+  --state-success-bg: oklch(0.24 0.05 145);
+  --state-warning: oklch(0.82 0.14 75);
+  --state-warning-bg: oklch(0.25 0.05 70);
+  --state-error: oklch(0.72 0.19 22);
+  --state-error-bg: oklch(0.25 0.05 20);
+  --state-info: oklch(0.78 0.15 230);
+  --state-info-bg: oklch(0.23 0.05 230);
 }
 
 @layer components {

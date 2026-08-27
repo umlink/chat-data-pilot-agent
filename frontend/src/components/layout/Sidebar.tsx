@@ -54,7 +54,8 @@ export function Sidebar() {
     navigate(`/session/${id}`)
   }
 
-  const remove = async (id: string) => {
+  const remove = async (id: string, title: string) => {
+    if (!window.confirm(`确定删除会话「${title}」吗？删除后对话记录将无法恢复。`)) return
     cancelStream(id) // 仅取消被删除会话的流，不影响其它会话
     try {
       await api.post('/sessions/delete', { id })
@@ -157,7 +158,7 @@ export function Sidebar() {
                     startRename(s)
                   }}
                   aria-label="重命名会话"
-                  className="flex size-[22px] items-center justify-center rounded-[4px] opacity-0 transition-opacity hover:bg-black/5 group-hover:opacity-60 hover:opacity-100!"
+                  className="flex size-[22px] items-center justify-center rounded-[4px] opacity-0 transition-opacity hover:bg-sidebar-accent group-hover:opacity-60 hover:opacity-100!"
                 >
                   <Pencil size={13} />
                 </button>
@@ -165,10 +166,10 @@ export function Sidebar() {
               <button
                 onClick={(e) => {
                   e.stopPropagation()
-                  remove(s.id)
+                  remove(s.id, s.title)
                 }}
                 aria-label="删除会话"
-                className="flex size-[22px] items-center justify-center rounded-[4px] opacity-0 transition-opacity hover:bg-black/5 group-hover:opacity-60 hover:opacity-100!"
+                className="flex size-[22px] items-center justify-center rounded-[4px] opacity-0 transition-opacity hover:bg-sidebar-accent group-hover:opacity-60 hover:opacity-100!"
               >
                 <Trash2 size={13} />
               </button>

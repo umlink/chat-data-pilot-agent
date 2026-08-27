@@ -37,7 +37,7 @@ export function TemplatesPage() {
 
   return (
     <div className="flex flex-1 flex-col overflow-y-auto">
-      <div className="flex items-center justify-between px-6 pb-4 pt-6">
+      <div className="flex items-center justify-between px-6 pb-1 pt-6">
         <div>
           <h2 className="text-[15px] font-semibold text-foreground">模板管理</h2>
           <p className="text-xs text-muted-foreground">可复用的分析配置（数据源 + SQL + 图表）</p>
@@ -61,7 +61,7 @@ export function TemplatesPage() {
         </div>
       </div>
 
-      <div className="px-6 pb-6">
+      <div className="px-6 pb-6 pt-4">
         {templates === null ? (
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
             <Skeleton className="h-32 rounded-xl" />

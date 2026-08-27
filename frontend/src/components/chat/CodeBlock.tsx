@@ -124,7 +124,7 @@ export function CodeBlock({ block, content }: Props) {
             onClick={() => void copyCode()}
             aria-label="复制代码"
             title="复制"
-            className="inline-flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-black/5 hover:text-foreground"
+            className="inline-flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-white/10 hover:text-foreground"
           >
             {copied ? <Check size={12} className="text-success" /> : <Copy size={12} />}
           </button>
@@ -133,7 +133,7 @@ export function CodeBlock({ block, content }: Props) {
               onClick={enterEdit}
               aria-label="编辑 SQL"
               title="编辑"
-              className="inline-flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-black/5 hover:text-foreground"
+              className="inline-flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-white/10 hover:text-foreground"
             >
               <Pencil size={12} />
             </button>
@@ -144,7 +144,7 @@ export function CodeBlock({ block, content }: Props) {
               disabled={executing || (editing && !shownCode.trim())}
               aria-label="执行 SQL"
               title="执行"
-              className="inline-flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-black/5 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+              className="inline-flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-white/10 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
             >
               <Play size={12} />
             </button>
