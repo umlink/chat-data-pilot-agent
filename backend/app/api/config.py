@@ -56,9 +56,10 @@ def _ping_llm(cfg: dict) -> dict:
         latency_ms = int((time.perf_counter() - start) * 1000)
         if resp.status_code == 200:
             return {"ok": True, "model": model or "default", "latency_ms": latency_ms}
-        return {"ok": False, "error": f"HTTP {resp.status_code}: {resp.text[:300]}"}
+        # 不回显响应体细节（避免服务端 echo 请求内容/敏感信息）
+        return {"ok": False, "error": f"HTTP {resp.status_code}"}
     except Exception as exc:  # 网络 / 超时 / DNS
-        return {"ok": False, "error": str(exc)[:300]}
+        return {"ok": False, "error": str(exc)[:200]}
 
 
 @router.get("", response_model=ApiResponse[dict])

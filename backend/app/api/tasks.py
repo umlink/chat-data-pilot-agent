@@ -44,7 +44,7 @@ def _task_event(snapshot: dict) -> dict:
     }
 
 
-async def _event_generator(task_id: str):
+async def _event_generator(task_id: str, user_id: str):
     redis = await get_redis()
     pubsub = redis.pubsub()
     await pubsub.subscribe(CHANNEL_PREFIX + task_id)
@@ -54,7 +54,7 @@ async def _event_generator(task_id: str):
     try:
         # 先发当前快照，避免错过订阅前的终态
         try:
-            snap = await _task_service.get(task_id)
+            snap = await _task_service.get(task_id, user_id)
         except KeyError:
             return
         seq += 1
@@ -76,7 +76,7 @@ async def _event_generator(task_id: str):
                     last_ping = monotonic()
                 refreshed += 1
                 if refreshed % 20 == 0:
-                    snap = await _task_service.get(task_id)
+                    snap = await _task_service.get(task_id, user_id)
                     if snap["status"] in TERMINAL:
                         seq += 1
                         yield _sse("task_status", seq, _task_event(snap))
@@ -90,7 +90,7 @@ async def _event_generator(task_id: str):
 @router.get("/{task_id}", response_model=ApiResponse[dict])
 async def get_task(task_id: str, user: Annotated[User, Depends(get_current_user)]):
     try:
-        snap = await _task_service.get(task_id)
+        snap = await _task_service.get(task_id, str(user.id))
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     return ApiResponse(data=snap)
@@ -102,7 +102,7 @@ async def cancel_task(
     user: Annotated[User, Depends(get_current_user)],
 ):
     try:
-        snap = await _task_service.cancel(task_id)
+        snap = await _task_service.cancel(task_id, str(user.id))
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     return ApiResponse(data=snap, message="取消已提交")
@@ -111,11 +111,11 @@ async def cancel_task(
 @router.get("/{task_id}/stream", include_in_schema=False)
 async def stream_task(task_id: str, user: Annotated[User, Depends(get_current_user)]):
     try:
-        await _task_service.get(task_id)
+        await _task_service.get(task_id, str(user.id))
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     return StreamingResponse(
-        _event_generator(task_id),
+        _event_generator(task_id, str(user.id)),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

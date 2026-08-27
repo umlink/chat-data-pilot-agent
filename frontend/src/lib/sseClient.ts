@@ -108,7 +108,8 @@ export async function streamSSE(
         dispatch(chunk)
       }
     }
-    // 收尾：处理未以空行结尾的残帧
+    // 收尾：flush 解码器残留字节 + 处理未以空行结尾的残帧
+    buffer += decoder.decode()
     if (buffer.trim()) dispatch(buffer)
     cb.onClose?.()
   } catch (err) {

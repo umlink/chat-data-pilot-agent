@@ -38,6 +38,7 @@ export function Login() {
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             placeholder="用户名"
+            aria-label="用户名"
             className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:border-ring"
           />
           <input
@@ -46,10 +47,11 @@ export function Login() {
             onChange={(e) => setPassword(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && submit()}
             placeholder="密码"
+            aria-label="密码"
             className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:border-ring"
           />
         </div>
-        {err && <p className="text-xs text-red-600">{err}</p>}
+        {err && <p className="text-xs text-error">{err}</p>}
         <button
           onClick={submit}
           disabled={busy || !username || !password}

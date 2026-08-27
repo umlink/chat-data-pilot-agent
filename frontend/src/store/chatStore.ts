@@ -19,7 +19,7 @@ interface ChatState {
   setSessionMessages: (sessionId: string, messages: Message[]) => void
   /** 取当前会话消息数组（供组件 selector） */
   getCurrentMessages: () => Message[]
-  setSessions: (sessions: SessionInfo[]) => void
+  setSessions: (updater: SessionInfo[] | ((prev: SessionInfo[]) => SessionInfo[])) => void
   setSending: (sessionId: string, v: boolean) => void
   /** 设置会话的数据源上下文（'' = 未指定） */
   setSessionDatasource: (sessionId: string, dsId: string) => void
@@ -70,7 +70,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const sid = get().sessionId
     return sid ? get().messagesBySession[sid] ?? [] : []
   },
-  setSessions: (sessions) => set({ sessions }),
+  setSessions: (updater) =>
+    set((s) => ({ sessions: typeof updater === 'function' ? updater(s.sessions) : updater })),
   setSending: (sessionId, v) => set((s) => ({ sending: { ...s.sending, [sessionId]: v } })),
   setSessionDatasource: (sessionId, dsId) =>
     set((s) => ({ datasourceBySession: { ...s.datasourceBySession, [sessionId]: dsId } })),

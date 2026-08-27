@@ -533,7 +533,7 @@ function ChartToolbar({
 }) {
   const { downloadSvg, downloadPng, downloadPdf } = useChartExport(chartRef, title)
   return (
-    <div className="absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+    <div className="absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
       <button
         onClick={onOpenSettings}
         className="rounded bg-background/80 px-1.5 py-1 text-muted-foreground hover:text-foreground"
@@ -556,6 +556,7 @@ function ChartToolbar({
         onClick={() => void downloadPng()}
         className="rounded bg-background/80 px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground"
         title="下载 PNG"
+        aria-label="导出 PNG"
       >
         PNG
       </button>
@@ -563,6 +564,7 @@ function ChartToolbar({
         onClick={downloadSvg}
         className="rounded bg-background/80 px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground"
         title="下载 SVG"
+        aria-label="导出 SVG"
       >
         SVG
       </button>
@@ -570,6 +572,7 @@ function ChartToolbar({
         onClick={() => void downloadPdf()}
         className="rounded bg-background/80 px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground"
         title="下载 PDF"
+        aria-label="导出 PDF"
       >
         PDF
       </button>

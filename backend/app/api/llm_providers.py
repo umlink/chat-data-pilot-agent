@@ -8,6 +8,7 @@
 """
 import asyncio
 import logging
+import re
 import time
 import uuid
 from typing import Annotated
@@ -36,6 +37,15 @@ from app.schemas.llm_provider import (
 router = APIRouter(prefix="/llm/providers", tags=["llm-providers"])
 
 logger = logging.getLogger("datapilot.llm_provider")
+
+_BASE_URL_RE = re.compile(r"^https?://", re.IGNORECASE)
+
+
+def _validate_base_url(url: str | None) -> None:
+    """base_url 仅允许 http/https 或留空（防止非 http 协议与异常跳转）。"""
+    u = (url or "").strip()
+    if u and not _BASE_URL_RE.match(u):
+        raise HTTPException(status_code=400, detail="base_url 仅支持 http/https 协议")
 
 
 class DeleteProviderRequest(BaseModel):
@@ -83,6 +93,7 @@ async def create_provider(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     rows = await _list_all(db)
+    _validate_base_url(req.base_url)
     row = LlmProvider(
         name=req.name,
         type=req.type,
@@ -110,6 +121,7 @@ async def update_provider(
     if req.type is not None:
         row.type = req.type
     if req.base_url is not None:
+        _validate_base_url(req.base_url)
         row.base_url = req.base_url.strip()
     if req.api_key is not None:
         new_key = req.api_key.strip()
@@ -188,9 +200,10 @@ def _ping_sync(ptype: str, api_key: str, model: str, base_url: str) -> dict:
         latency_ms = int((time.perf_counter() - start) * 1000)
         if resp.status_code == 200:
             return {"ok": True, "model": model or "default", "latency_ms": latency_ms}
-        return {"ok": False, "error": f"HTTP {resp.status_code}: {resp.text[:300]}"}
+        # 不回显响应体细节（避免服务端 echo 请求内容/敏感信息）
+        return {"ok": False, "error": f"HTTP {resp.status_code}"}
     except Exception as exc:  # 网络 / 超时 / DNS
-        return {"ok": False, "error": str(exc)[:300]}
+        return {"ok": False, "error": str(exc)[:200]}
 
 
 @router.post("/{provider_id}/test", response_model=ApiResponse[ProviderTestResult])

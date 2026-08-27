@@ -36,7 +36,11 @@ async def rate_limit_chat(user: Annotated[User, Depends(get_current_user)]) -> U
 
     Redis 不可用时降级放行（基础设施不可用降级，不阻断对话）。
     """
-    limit = int((await ConfigService().get("system.ratelimit") or {}).get("per_minute", 10))
+    limit = 10  # 默认值
+    try:
+        limit = int((await ConfigService().get("system.ratelimit") or {}).get("per_minute", 10))
+    except (TypeError, ValueError):
+        pass  # 配置值非法（如非数字）时兜底为默认，避免全站 500
     if limit <= 0:
         return user
     try:

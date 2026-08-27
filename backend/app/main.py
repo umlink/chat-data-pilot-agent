@@ -23,6 +23,13 @@ setup_structlog()
 logging.getLogger().setLevel(logging.INFO)
 logger = logging.getLogger("datapilot")
 
+# 生产安全（CLAUDE.md 4.6）：SECRET_KEY 必须显式配置为强随机值，默认值仅允许关闭认证时使用。
+# 默认密钥可被攻击者用于伪造任意用户 JWT，直接接管系统。
+if settings.ENABLE_AUTH and settings.SECRET_KEY == "change-me-in-prod":
+    raise RuntimeError(
+        "SECRET_KEY 仍为默认值：请在 .env 中配置强随机 SECRET_KEY 后再启动（生产安全要求）"
+    )
+
 _worker = Worker(count=3)
 
 

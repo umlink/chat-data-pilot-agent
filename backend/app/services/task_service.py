@@ -10,6 +10,7 @@ from sqlalchemy import select
 
 from app.core.database import SessionFactory
 from app.models.task import Task
+from app.models.user import Session
 
 
 def _snapshot(t: Task) -> dict[str, Any]:
@@ -44,24 +45,44 @@ class TaskService:
             await db.refresh(t)
             return _snapshot(t)
 
-    async def get(self, task_id: str) -> dict:
+    async def get(self, task_id: str, user_id: str | None = None) -> dict:
         try:
             tid = uuid.UUID(task_id)
         except ValueError:
             raise KeyError("任务 ID 非法")
         async with SessionFactory() as db:
-            t = await db.get(Task, tid)
+            if user_id is None:
+                t = await db.get(Task, tid)
+            else:
+                # 归属校验（CLAUDE.md 4.6）：任务经 session 关联到用户；
+                # session 为空（任务已无归属会话）或归属非当前用户 → 一律视为不存在（404）。
+                t = (
+                    await db.execute(
+                        select(Task)
+                        .join(Session, Task.session_id == Session.id, isouter=True)
+                        .where(Task.id == tid, Session.user_id == uuid.UUID(user_id))
+                    )
+                ).scalar_one_or_none()
             if t is None:
                 raise KeyError("任务不存在")
             return _snapshot(t)
 
-    async def cancel(self, task_id: str) -> dict:
+    async def cancel(self, task_id: str, user_id: str | None = None) -> dict:
         try:
             tid = uuid.UUID(task_id)
         except ValueError:
             raise KeyError("任务 ID 非法")
         async with SessionFactory() as db:
-            t = await db.get(Task, tid)
+            if user_id is None:
+                t = await db.get(Task, tid)
+            else:
+                t = (
+                    await db.execute(
+                        select(Task)
+                        .join(Session, Task.session_id == Session.id, isouter=True)
+                        .where(Task.id == tid, Session.user_id == uuid.UUID(user_id))
+                    )
+                ).scalar_one_or_none()
             if t is None:
                 raise KeyError("任务不存在")
             if t.status in ("success", "failed", "cancelled"):

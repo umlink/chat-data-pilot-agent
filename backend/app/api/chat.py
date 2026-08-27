@@ -21,7 +21,7 @@ from app.core.database import SessionFactory, get_db
 from app.models.user import Feedback, Message, Session, User
 from app.schemas.common import ApiResponse, MessageRecord
 from app.services.chat_service import ChatService, _json_safe
-from app.services.sql_engine import SqlEngine, SqlNeedsConfirmation, SqlRoutingError
+from app.services.sql_engine import SqlEngine, SqlNeedsConfirmation, SqlRoutingError, _safe_error
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -108,6 +108,7 @@ async def chat_stream(
             attachments=req.attachments,
             client_msg_id=req.client_msg_id,
         ).__aiter__()
+        nxt: asyncio.Future | None = None
         try:
             while True:
                 nxt = asyncio.ensure_future(agen.__anext__())
@@ -128,6 +129,11 @@ async def chat_stream(
             seq += 1
             yield _sse("error", seq, {"code": "INTERNAL_ERROR", "message": "服务内部错误，请重试"})
         finally:
+            # 客户端断开时 Starlette 会取消本生成器：先取消未完成的 __anext__ 任务再 aclose，
+            # 避免生成器仍在 running 时 aclose() 抛 RuntimeError，并让后台 LLM 流及时停止。
+            if nxt is not None:
+                nxt.cancel()
+                await asyncio.gather(nxt, return_exceptions=True)
             await agen.aclose()
 
     return StreamingResponse(
@@ -147,8 +153,8 @@ async def chat_feedback(
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    if req.rating not in (1, -1):
-        raise HTTPException(status_code=400, detail="rating 只允许 1 或 -1")
+    if req.rating not in (0, 1, -1):
+        raise HTTPException(status_code=400, detail="rating 只允许 1、-1 或 0（0=取消反馈）")
     try:
         mid = UUID(req.message_id)
     except ValueError:
@@ -162,6 +168,15 @@ async def chat_feedback(
     msg = result.scalar_one_or_none()
     if msg is None:
         raise HTTPException(status_code=404, detail="消息不存在")
+    if req.rating == 0:
+        # 取消反馈：删除该消息已有反馈（前端再次点击同一按钮 = 取消），保持前后端状态一致
+        existing = (
+            await db.execute(select(Feedback).where(Feedback.message_id == mid).limit(1))
+        ).scalar_one_or_none()
+        if existing is not None:
+            await db.delete(existing)
+        await db.commit()
+        return ApiResponse(data=None, message="反馈已取消")
     db.add(Feedback(message_id=mid, rating=req.rating, comment=req.comment))
     await db.commit()
     return ApiResponse(data=None, message="反馈已提交")
@@ -172,7 +187,8 @@ async def _find_executable_block(
 ) -> tuple[Message, dict]:
     """在归属当前用户的消息中定位可执行 block（confirmation / code）。
 
-    消息 → 会话 → 用户 归属校验，杜绝跨用户执行。
+    消息 → 会话 → 用户 归属校验，杜绝跨用户执行；
+    已处理（确认/拒绝/已执行）的 block 拒绝再次提交，防止写操作重复执行。
     """
     result = await db.execute(
         select(Message)
@@ -184,6 +200,15 @@ async def _find_executable_block(
     for msg in result.scalars().all():
         for block in msg.blocks or []:
             if block.get("id") == block_id and block.get("type") in ("confirmation", "code"):
+                content = block.get("content") or {}
+                if block["type"] == "confirmation":
+                    # 仅 pending 且未决（confirmed 未写入）的卡片可操作
+                    if block.get("status") != "pending" or content.get("confirmed") is not None:
+                        raise HTTPException(status_code=409, detail="该确认卡片已处理，请勿重复操作")
+                else:
+                    exec_status = (content.get("execution") or {}).get("status")
+                    if exec_status in ("success", "failed"):
+                        raise HTTPException(status_code=409, detail="该代码块已执行，请勿重复执行")
                 return msg, block
     raise HTTPException(status_code=404, detail="确认卡片或代码块不存在，或已处理")
 
@@ -229,7 +254,7 @@ async def _execute_code_block(
         return _serialize_message(msg)
     except Exception as exc:
         logger.exception("code block SQL 执行失败", extra={"block_id": req.block_id})
-        content["execution"] = {"status": "failed", "error": f"SQL 执行失败：{str(exc).strip() or '未知错误'}"}
+        content["execution"] = {"status": "failed", "error": f"SQL 执行失败：{_safe_error(exc)}"}
         block["content"] = content
         blocks[block_idx] = block
         msg.blocks = blocks
@@ -305,7 +330,7 @@ async def chat_execute(
         except Exception as exc:
             logger.exception("确认后 SQL 执行失败", extra={"block_id": req.block_id})
             raise HTTPException(
-                status_code=400, detail=f"SQL 执行失败：{str(exc).strip() or '未知错误'}"
+                status_code=400, detail=f"SQL 执行失败：{_safe_error(exc)}"
             )
         meta = table.pop("_meta", None)
         result_block = {

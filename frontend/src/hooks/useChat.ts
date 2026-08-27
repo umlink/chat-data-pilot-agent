@@ -22,12 +22,14 @@ const LONG_TASK_MS = 10_000
 export function cancelAllStreams(): void {
   for (const ctrl of controllers.values()) ctrl.abort()
   controllers.clear()
+  taskStartedAt.clear()
 }
 
 /** 取消指定会话的流（会话删除时调用） */
 export function cancelStream(sessionId: string): void {
   controllers.get(sessionId)?.abort()
   controllers.delete(sessionId)
+  taskStartedAt.clear()
 }
 
 function uid(): string {
@@ -252,6 +254,8 @@ export function useChat() {
           ctrl.signal,
         )
       } catch (err) {
+        // 主动取消（同会话发新消息 / 登出）不是错误：直接退出，不污染旧消息
+        if (ctrl.signal.aborted) break
         lastError = err instanceof Error ? err : new Error(String(err))
       }
       if (!lastError) break // 正常完成（含服务端 error 事件，属业务结束）
@@ -267,13 +271,22 @@ export function useChat() {
         s.setBlockStatus(sessionId, msgId, textBlockId, 'failed')
         break
       }
-      // 零事件断线：等待后重连一次
+      // 零事件断线：等待后重连一次（等待期间被取消则退出）
       receivedAny = false
       await new Promise((r) => setTimeout(r, 600))
+      if (ctrl.signal.aborted) break
     }
-    flushTokens()
-    useChatStore.getState().setSending(sessionId, false)
-    if (controllers.get(sessionId) === ctrl) controllers.delete(sessionId)
+    // 收尾：主动取消时丢弃未 flush 的缓冲（不追加进已中断消息）；否则正常 flush
+    if (ctrl.signal.aborted) {
+      tokenBuf.clear()
+    } else {
+      flushTokens()
+    }
+    // 仅当本协程仍是该会话当前流时才清 sending，避免误清新流的发送状态
+    if (controllers.get(sessionId) === ctrl) {
+      useChatStore.getState().setSending(sessionId, false)
+      controllers.delete(sessionId)
+    }
   }, [])
 
   return { send }

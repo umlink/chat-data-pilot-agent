@@ -45,9 +45,38 @@ import math  # noqa: E402,F401
 import numpy as np  # noqa: E402,F401
 import pandas as pd  # noqa: E402,F401
 
+# 沙箱 IO 限制：白名单模块（pandas/numpy）自带宿主文件与网络能力，
+# 屏蔽高危读写入口，防止任意文件读写与 pickle 反序列化（RCE）。
+_PD_BLOCKED_IO = frozenset({
+    "read_csv", "read_table", "read_excel", "read_json", "read_html", "read_parquet",
+    "read_pickle", "read_feather", "read_sql", "read_sas", "read_spss", "read_stata",
+    "read_clipboard", "to_csv", "to_excel", "to_json", "to_parquet", "to_pickle",
+    "to_html", "to_feather", "to_sql", "to_clipboard", "ExcelFile", "HDFStore", "eval",
+})
+_NP_BLOCKED_IO = frozenset({
+    "load", "save", "savez", "savetxt", "loadtxt", "genfromtxt", "fromfile",
+    "tofile", "memmap",
+})
+
+
+def _io_guard(mod, blocked):
+    _mod = mod
+    _blocked = blocked
+
+    class _Guard:
+        def __getattr__(self, name):
+            if name in _blocked:
+                raise RuntimeError(f"沙箱限制：{_mod.__name__}.{name} 的文件/网络 IO 已禁用")
+            return getattr(_mod, name)
+
+    return _Guard()
+
+
+pd = _io_guard(pd, _PD_BLOCKED_IO)
+np = _io_guard(np, _NP_BLOCKED_IO)
+
 from RestrictedPython import compile_restricted_exec, safe_globals
 from RestrictedPython.Eval import (
-    default_guarded_getattr,
     default_guarded_getitem,
     default_guarded_getiter,
 )
@@ -57,6 +86,22 @@ from RestrictedPython.Guards import (
     full_write_guard,
 )
 from RestrictedPython.PrintCollector import PrintCollector
+
+# DataFrame 实例写文件方法（df.to_csv 等）：模块级已拦 pd.read_*/to_*，这里补实例级拦截
+_DF_IO_METHODS = frozenset({
+    "to_csv", "to_excel", "to_json", "to_parquet", "to_pickle",
+    "to_html", "to_feather", "to_sql", "to_clipboard",
+})
+
+
+def _getattr_safe(obj, name):
+    if name == "ppp":
+        return None
+    if name.startswith("_"):
+        raise AttributeError(f'"{name}" is an invalid attribute name because it starts with "_"')
+    if name in _DF_IO_METHODS and type(obj).__name__ == "DataFrame":
+        raise RuntimeError(f"沙箱限制：DataFrame.{name} 的文件写入已禁用")
+    return getattr(obj, name)
 
 payload_path, result_path = sys.argv[1], sys.argv[2]
 with open(payload_path, encoding="utf-8") as f:
@@ -109,7 +154,7 @@ result_meta = {"table_id": None}
 
 glb = safe_globals.copy()
 glb.update({
-    "_getattr_": default_guarded_getattr,
+    "_getattr_": _getattr_safe,
     "_getitem_": default_guarded_getitem,
     "_getiter_": default_guarded_getiter,
     "_unpack_sequence_": guarded_unpack_sequence,
@@ -123,7 +168,13 @@ def _restricted_import(name, *args, **kwargs):
     root = name.split(".")[0]
     if root not in _whitelist:
         raise ImportError(f"模块 {name} 不在白名单（允许: {', '.join(sorted(_whitelist))}）")
-    return __import__(name, *args, **kwargs)
+    mod = __import__(name, *args, **kwargs)
+    # 显式 import 也返回受限代理，防止绕过注入时的 IO 屏蔽
+    if root == "pandas":
+        return _io_guard(mod, _PD_BLOCKED_IO)
+    if root == "numpy":
+        return _io_guard(mod, _NP_BLOCKED_IO)
+    return mod
 
 
 glb["__name__"] = "__main__"
@@ -176,8 +227,8 @@ def _prepare_payload(code: str, inserts: list[dict[str, Any]]) -> tuple[Path, Pa
     payload_path.write_text(
         json.dumps({"code": code, "inserts": inserts}, ensure_ascii=False), encoding="utf-8"
     )
-    if not runner_path.exists():
-        runner_path.write_text(_RUNNER, encoding="utf-8")
+    # 每次重写 runner：保证沙箱守卫/逻辑更新即时生效，避免旧 runner 缓存绕过防护
+    runner_path.write_text(_RUNNER, encoding="utf-8")
     return payload_path, runner_path, result_path
 
 

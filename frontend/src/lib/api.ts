@@ -38,6 +38,14 @@ export function redirectToLogin(): void {
   }
 }
 
+/** 401 统一处理：携带 token 请求被拒 = token 失效/过期 → 清 token 回登录页（request 与下载/上传等直连复用） */
+function handleUnauthorized(res: Response): void {
+  if (res.status === 401 && getToken()) {
+    clearToken()
+    redirectToLogin()
+  }
+}
+
 /**
  * 服务端校验当前 token：有效返回 true；401（失效/过期）清 token 返回 false。
  * 网络异常等非鉴权错误返回 true（后端临时不可达不该踢掉已登录用户，
@@ -111,10 +119,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 
   // 全局 401：携带 token 请求被拒 = token 失效/过期 → 清 token 回登录页
   // （登录接口自身 auth:false，不受影响）
-  if (res.status === 401 && auth && getToken()) {
-    clearToken()
-    redirectToLogin()
-  }
+  if (auth) handleUnauthorized(res)
 
   let payload: ApiResponse<T> | null = null
   try {
@@ -180,6 +185,8 @@ export async function downloadFile(path: string, filename: string, opts: Downloa
     throw new ApiError('网络异常：无法连接服务器，请检查网络或后端服务', 0, -1)
   }
   if (!res.ok) {
+    // 下载类接口同样接入全局 401 登出
+    handleUnauthorized(res)
     let message = `下载失败（HTTP ${res.status}）`
     try {
       const payload = (await res.json()) as { message?: string }

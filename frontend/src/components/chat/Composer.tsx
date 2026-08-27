@@ -104,9 +104,10 @@ export function Composer({ sessionId, disabled, onSend }: Props) {
             <FileText size={15} />
           </button>
           <button
-            className="inline-flex size-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground"
+            className="inline-flex size-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
             aria-label="提及数据集"
             title="提及数据集（待开放）"
+            disabled
           >
             <AtSign size={15} />
           </button>
@@ -122,6 +123,7 @@ export function Composer({ sessionId, disabled, onSend }: Props) {
             }
           }}
           placeholder="输入您的问题，Shift+Enter 换行…"
+          aria-label="输入问题"
           className="max-h-[120px] min-h-[22px] flex-1 resize-none bg-transparent px-1 py-1.5 text-[13px] leading-[1.5] text-foreground outline-none placeholder:text-muted-foreground"
         />
         <button

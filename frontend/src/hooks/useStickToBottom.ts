@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useRef } from 'react'
 import type { RefObject } from 'react'
 
 /**
@@ -20,38 +20,46 @@ export function useStickToBottom<T extends HTMLElement>(): {
 } {
   const ref = useRef<T>(null)
   const stickRef = useRef(true)
+  // 惰性绑定标记：容器可能在首帧后才挂载（空态 → 正式布局），首次滚动前补绑监听
+  const boundRef = useRef(false)
 
-  // 滚动监听（passive）：更新贴底状态
-  useEffect(() => {
+  const onScroll = useCallback(() => {
     const el = ref.current
     if (!el) return
-    const onScroll = () => {
-      const dist = el.scrollHeight - el.scrollTop - el.clientHeight
-      stickRef.current = dist < Math.max(48, el.clientHeight * 0.15)
-    }
-    el.addEventListener('scroll', onScroll, { passive: true })
-    return () => el.removeEventListener('scroll', onScroll)
+    const dist = el.scrollHeight - el.scrollTop - el.clientHeight
+    stickRef.current = dist < Math.max(48, el.clientHeight * 0.15)
   }, [])
+
+  // 惰性绑定滚动监听：容器挂载后首次 follow/forceScroll 时补绑，
+  // 解决首帧容器不存在（空态）导致 useEffect([]) 监听永不绑定的问题
+  const ensureBound = useCallback(() => {
+    const el = ref.current
+    if (!el || boundRef.current) return
+    el.addEventListener('scroll', onScroll, { passive: true })
+    boundRef.current = true
+  }, [onScroll])
 
   /** 调用方在其 useEffect 中调用（内容变化时）：贴底才滚，rAF 合帧 */
   const follow = useCallback(() => {
+    ensureBound()
     const el = ref.current
     if (!el || !stickRef.current) return
     const raf = requestAnimationFrame(() => {
       el.scrollTo({ top: el.scrollHeight }) // auto：流式高频更新时平滑会抖
     })
     return () => cancelAnimationFrame(raf)
-  }, [])
+  }, [ensureBound])
 
   /** 主动贴底（发送/切换会话后），低频动作用平滑滚动 */
   const forceScroll = useCallback(() => {
+    ensureBound()
     stickRef.current = true
     const el = ref.current
     if (!el) return
     requestAnimationFrame(() => {
       el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
     })
-  }, [])
+  }, [ensureBound])
 
   return { ref, follow, forceScroll }
 }

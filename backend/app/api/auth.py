@@ -1,12 +1,13 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
 from app.core.database import get_db
+from app.core.redis import get_redis
 from app.core.security import create_access_token, hash_password, verify_password
 from app.models.user import User
 from app.schemas.common import ApiResponse
@@ -15,6 +16,10 @@ from app.services.log_service import LogService
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 _log_service = LogService()
+
+# 登录限流（CLAUDE.md 4.6：每 IP 每分钟 5 次）
+LOGIN_RATE_LIMIT = 5
+LOGIN_RATE_WINDOW_SECONDS = 60
 
 
 class LoginRequest(BaseModel):
@@ -32,8 +37,31 @@ class UserInfo(BaseModel):
     username: str
 
 
+async def _rate_limit_login(request: Request) -> None:
+    """登录接口限流：每 IP 每分钟 N 次。Redis 不可用时降级放行（与对话限流一致）。"""
+    ip = request.client.host if request.client else "unknown"
+    try:
+        redis = await get_redis()
+        key = f"ratelimit:login:{ip}"
+        count = await redis.incr(key)
+        if count == 1:
+            await redis.expire(key, LOGIN_RATE_WINDOW_SECONDS)
+        if count > LOGIN_RATE_LIMIT:
+            raise HTTPException(status_code=429, detail="登录尝试过于频繁，请 1 分钟后再试")
+    except HTTPException:
+        raise
+    except Exception:
+        # Redis 不可用：降级放行（不阻断登录）
+        pass
+
+
 @router.post("/login", response_model=ApiResponse[dict])
-async def login(req: LoginRequest, db: Annotated[AsyncSession, Depends(get_db)]):
+async def login(
+    req: LoginRequest,
+    request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    await _rate_limit_login(request)
     result = await db.execute(select(User).where(User.username == req.username))
     user = result.scalar_one_or_none()
     if user is None or not verify_password(req.password, user.password_hash):

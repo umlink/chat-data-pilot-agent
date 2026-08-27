@@ -12,6 +12,7 @@ M3 范围：
 """
 import json
 import logging
+import re
 from typing import Any
 
 import asyncpg
@@ -21,6 +22,9 @@ from app.models.datasource import Datasource
 from app.schemas.datasource import FILE_TYPES, SECRET_CONFIG_FIELDS
 
 logger = logging.getLogger("datapilot.data")
+
+# 连接错误脱敏：dsn/url 可能内嵌密码，回显前掩掉 password=... 段，避免凭据泄漏到日志与响应
+_PASSWORD_RE = re.compile(r"(?i)(password|passwd|pwd)=([^\\s'\"@,]+)")
 
 # 统一连接超时（秒）
 CONNECT_TIMEOUT = 10
@@ -112,8 +116,8 @@ class DataService:
             if ds_type == "sqlite":
                 return await self._test_sqlite(config)
         except Exception as exc:  # 连接失败 / 参数错误 / 驱动缺失统一收敛为可读错误
-            logger.warning("数据源连接测试失败：type=%s error=%s", ds_type, exc)
-            return {"ok": False, "error": str(exc)[:300]}
+            logger.warning("数据源连接测试失败：type=%s error=%s", ds_type, _PASSWORD_RE.sub(r"\1=***", str(exc)))
+            return {"ok": False, "error": _PASSWORD_RE.sub(r"\1=***", str(exc))[:300]}
         return {"ok": False, "error": f"暂不支持的数据源类型: {ds_type}"}
 
     async def _test_postgresql(self, config: dict[str, Any]) -> dict[str, Any]:

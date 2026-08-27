@@ -20,7 +20,7 @@ export function SourcesBlock({ content }: { content: { items: SourceItem[] } }) 
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       <span className="text-[11px] font-medium text-muted-foreground">数据来源</span>
-      {items.map((it, i) => {
+      {items.map((it) => {
         const inner = (
           <span className="inline-flex items-center gap-1">
             {chipIcon(it.label)}
@@ -29,7 +29,7 @@ export function SourcesBlock({ content }: { content: { items: SourceItem[] } }) 
         )
         return it.sql ? (
           <button
-            key={i}
+            key={it.label}
             onClick={() => setSql(it.sql ?? '')}
             aria-label={`查看查询 SQL：${it.label}`}
             title="点击查看查询语句"
@@ -39,7 +39,7 @@ export function SourcesBlock({ content }: { content: { items: SourceItem[] } }) 
           </button>
         ) : (
           <span
-            key={i}
+            key={it.label}
             className="inline-flex items-center rounded-full border bg-muted/50 px-2.5 py-0.5 text-[11px] text-muted-foreground"
           >
             {inner}

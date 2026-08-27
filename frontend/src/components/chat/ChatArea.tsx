@@ -54,10 +54,21 @@ export function ChatArea() {
     }
     if (id === sessionId) return
     setSessionId(id)
+    // D1：切换会话不中断后台流。若目标会话正在流式（assistant 消息尚未落库），
+    // 跳过 DB 快照回填、信任本地流式状态，避免覆盖导致进行中的回答丢失。
+    if (useChatStore.getState().sending[id]) return
+    let alive = true
     void api
       .get<Message[]>(`/sessions/${id}/messages`)
-      .then((msgs) => setSessionMessages(id, msgs))
-      .catch(() => setSessionMessages(id, []))
+      .then((msgs) => {
+        if (alive) setSessionMessages(id, msgs)
+      })
+      .catch(() => {
+        if (alive) setSessionMessages(id, [])
+      })
+    return () => {
+      alive = false
+    }
   }, [id, sessionId, setSessionId, setSessionMessages])
 
   // 组件卸载（登出等）时取消所有流

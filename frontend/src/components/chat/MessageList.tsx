@@ -20,6 +20,9 @@ function FeedbackButtons({ messageId }: { messageId: string }) {
     try {
       if (next !== null) {
         await api.post('/chat/feedback', { message_id: messageId, rating: next })
+      } else {
+        // 取消评分：rating=0 撤销后端已有反馈，刷新后不残留旧评分
+        await api.post('/chat/feedback', { message_id: messageId, rating: 0 })
       }
     } catch {
       // 静默失败，不影响阅读

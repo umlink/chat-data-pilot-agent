@@ -42,7 +42,7 @@ export function Sidebar() {
   const createSession = async () => {
     try {
       const s = await api.post<SessionInfo>('/sessions', { title: '新对话' })
-      setSessions([s, ...sessions])
+      setSessions((prev) => [s, ...prev])
       navigate(`/session/${s.id}`) // 会话选中状态由路由承载（/session/:id）
     } catch {
       /* 后端未实现时忽略 */
@@ -59,7 +59,7 @@ export function Sidebar() {
     cancelStream(id) // 仅取消被删除会话的流，不影响其它会话
     try {
       await api.post('/sessions/delete', { id })
-      setSessions(sessions.filter((x) => x.id !== id))
+      setSessions((prev) => prev.filter((x) => x.id !== id))
       if (sessionId === id) navigate('/')
     } catch {
       /* ignore */
@@ -78,7 +78,7 @@ export function Sidebar() {
     setRenamingId(null)
     try {
       await api.post('/sessions/update', { id, title })
-      setSessions(sessions.map((x) => (x.id === id ? { ...x, title } : x)))
+      setSessions((prev) => prev.map((x) => (x.id === id ? { ...x, title } : x)))
     } catch {
       /* 保存失败保留原标题 */
     }
@@ -127,7 +127,15 @@ export function Sidebar() {
           return (
             <div
               key={s.id}
+              role="button"
+              tabIndex={0}
               onClick={() => select(s.id)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  select(s.id)
+                }
+              }}
               className={`group flex cursor-pointer items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13px] transition-colors ${
                 active
                   ? 'bg-sidebar-active font-medium text-sidebar-active-foreground'
@@ -142,6 +150,7 @@ export function Sidebar() {
                   onClick={(e) => e.stopPropagation()}
                   onBlur={() => void commitRename()}
                   onKeyDown={(e) => {
+                    e.stopPropagation()
                     if (e.key === 'Enter') void commitRename()
                     if (e.key === 'Escape') setRenamingId(null)
                   }}
@@ -158,7 +167,7 @@ export function Sidebar() {
                     startRename(s)
                   }}
                   aria-label="重命名会话"
-                  className="flex size-[22px] items-center justify-center rounded-[4px] opacity-0 transition-opacity hover:bg-sidebar-accent group-hover:opacity-60 hover:opacity-100!"
+                  className="flex size-[22px] items-center justify-center rounded-[4px] opacity-0 transition-opacity hover:bg-sidebar-accent group-hover:opacity-60 hover:opacity-100! focus-visible:opacity-100"
                 >
                   <Pencil size={13} />
                 </button>
@@ -169,7 +178,7 @@ export function Sidebar() {
                   remove(s.id, s.title)
                 }}
                 aria-label="删除会话"
-                className="flex size-[22px] items-center justify-center rounded-[4px] opacity-0 transition-opacity hover:bg-sidebar-accent group-hover:opacity-60 hover:opacity-100!"
+                className="flex size-[22px] items-center justify-center rounded-[4px] opacity-0 transition-opacity hover:bg-sidebar-accent group-hover:opacity-60 hover:opacity-100! focus-visible:opacity-100"
               >
                 <Trash2 size={13} />
               </button>

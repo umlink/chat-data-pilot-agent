@@ -100,7 +100,7 @@ function CopyBlockButton({ text }: { text: string }) {
       onClick={() => void copy()}
       aria-label="复制内容"
       title="复制"
-      className="absolute -right-2 -top-2 z-10 inline-flex size-6 items-center justify-center rounded-md border bg-background text-muted-foreground opacity-0 shadow-sm transition-opacity hover:text-foreground group-hover/block:opacity-100"
+      className="absolute -right-2 -top-2 z-10 inline-flex size-6 items-center justify-center rounded-md border bg-background text-muted-foreground opacity-0 shadow-sm transition-opacity hover:text-foreground group-hover/block:opacity-100 focus-visible:opacity-100"
     >
       {copied ? <Check size={12} className="text-success" /> : <Copy size={12} />}
     </button>
@@ -184,8 +184,8 @@ export function BlockViewer({
         const items = (c.items as InsightItem[]) ?? []
         return (
           <ul className="space-y-1 text-[13px] leading-6 text-foreground">
-            {items.map((it, i) => (
-              <li key={i}>
+            {items.map((it) => (
+              <li key={it.title.slice(0, 20)}>
                 <b>{it.title}</b>
                 {it.detail ? ` ${it.detail}` : ''}
               </li>
@@ -198,9 +198,9 @@ export function BlockViewer({
         const items = (c.items as SuggestionItem[]) ?? []
         return (
           <div className="flex flex-wrap gap-2">
-            {items.map((it, i) => (
+            {items.map((it) => (
               <button
-                key={i}
+                key={it.text}
                 onClick={() => send(it.message || it.text)}
                 className="rounded-full border bg-background px-3 py-1 text-xs text-foreground hover:bg-accent"
               >

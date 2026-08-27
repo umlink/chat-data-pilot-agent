@@ -28,6 +28,7 @@ def build_minio_client() -> Minio:
         access_key=settings.MINIO_ACCESS_KEY,
         secret_key=settings.MINIO_SECRET_KEY,
         secure=False,  # 内网部署走 HTTP；生产按需改为 secure
+        timeout=120,  # 连接/读取超时（秒）：避免 MinIO 挂起时任务无限阻塞
     )
     return client
 

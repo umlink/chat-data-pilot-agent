@@ -553,7 +553,10 @@ class ChatService:
             if summary:
                 messages.insert(1, {"role": "system", "content": summary})
 
-        max_rows = int((await self._config.get("system.query") or {}).get("max_query_rows", 1000))
+        try:
+            max_rows = int((await self._config.get("system.query") or {}).get("max_query_rows", 1000))
+        except (TypeError, ValueError):
+            max_rows = 1000  # 配置值非法时兜底为默认，避免全站 500
         tctx = ToolCtx(
             session_id=session_id,
             user_id=user_id,
@@ -613,8 +616,12 @@ class ChatService:
             # 失败路径：text block 置 failed，追加 error block 落库，发 error 事件后结束（无 done）。
             # LLM 适配器层已按 retry_count 自动重试过（PRD：AI 生成失败自动重试 1 次），
             # 仍失败则置 retryable=True 供前端提供手动重试入口。
-            logger.exception("LLM 流式调用失败", extra={"session_id": str(session_id)})
-            err = _error_block("LLM_ERROR", str(exc)[:500], retryable=True)
+            # 异常细节（可能含连接串/内部路径）只进日志，不下发用户可见文案（避免细节泄漏）。
+            logger.exception(
+                "LLM 流式调用失败",
+                extra={"session_id": str(session_id), "error": str(exc)[:500]},
+            )
+            err = _error_block("LLM_ERROR", "AI 生成失败，请重试或稍后再试", retryable=True)
             text_block["status"] = "failed"
             text_block["content"]["text"] = "".join(parts)
             await self._persist_message(
@@ -622,7 +629,9 @@ class ChatService:
                 metadata={"usage": {}}, message_id=message_id,
             )
             yield _block_end(text_block, "failed")
-            yield {"event": "error", "data": {"code": "LLM_ERROR", "message": str(exc)[:500], "retryable": True}}
+            yield {"event": "error", "data": {
+                "code": "LLM_ERROR", "message": "AI 生成失败，请重试或稍后再试", "retryable": True,
+            }}
             return
 
         # 4) 成功路径：text block 终态 + 工具副作用落库 + done

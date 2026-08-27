@@ -40,12 +40,24 @@ _WRITE_RISK: dict[str, str] = {
     "REPLACE": "high",
     "MERGE": "high",
 }
+# 单/双引号字符串字面量：剥离后扫描写关键字，避免字符串值内的写词误判
+_STRING_LITERAL_RE = re.compile(r"'([^']|'')*'|\"([^\"]|\"\")*\"")
+# CTE 内写语句扫描：WITH ... AS (...) SELECT 的 CTE 体内可能内嵌写操作（绕过判定）
+_CTE_WRITE_RE = re.compile(r"\b(?:%s)\b" % "|".join(sorted(_WRITE_RISK)), re.IGNORECASE)
 # 无法判定/明确禁止的语句
 _FORBIDDEN = ("COPY", "CALL", "EXECUTE", "VACUUM", "GRANT", "REVOKE", "ATTACH", "DETACH")
 
 _ATT_TABLE_RE = re.compile(r"\batt_[A-Za-z0-9-]+", re.IGNORECASE)
 # SQLite 元数据/发现类语句（附件引擎专用）：AI 用它们列出附件表清单 / 查看表结构
 _SQLITE_META_RE = re.compile(r"sqlite_master|\bpragma\b", re.IGNORECASE)
+# 连接/执行错误脱敏：dsn/url 可能内嵌密码，回显与日志前掩掉 password=... 段
+_PASSWORD_RE = re.compile(r"(?i)(password|passwd|pwd)=([^\\s'\"@,]+)")
+
+
+def _safe_error(exc: BaseException) -> str:
+    """异常文本脱敏（掩掉 dsn 内嵌密码）后收敛为可读文案。"""
+    msg = str(exc).strip() or "未知错误"
+    return _PASSWORD_RE.sub(r"\1=***", msg)
 
 
 class SqlNeedsConfirmation(Exception):
@@ -89,7 +101,10 @@ def _sql_kind(sql: str) -> tuple[str, str]:
     first = normalized.split()[0].upper() if normalized else ""
     if first == "SELECT" or first == "WITH":
         if first == "WITH" and "AS" in normalized:
-            # CTE：仍可能包含写语句，保守判定——先按 select 处理（引擎在 sqlite/api 层有行数保护）
+            # CTE：仅看首关键字会把 `WITH cte AS (DELETE ...) SELECT *` 误判为 SELECT，
+            # 从而绕过写操作确认。剥离字符串字面量后扫描整条语句的写关键字，命中即按写操作处理。
+            if _CTE_WRITE_RE.search(_STRING_LITERAL_RE.sub(" ", normalized)):
+                return "write", "medium"
             return "select", "medium"
         return "select", "low"
     if first in _FORBIDDEN:
@@ -355,7 +370,7 @@ class SqlEngine:
         try:
             conn = await asyncpg.connect(timeout=30, **_pg_kwargs(cfg))
         except Exception as exc:
-            raise SqlRoutingError(f"连接数据源失败：{exc}") from exc
+            raise SqlRoutingError(f"连接数据源失败：{_safe_error(exc)}") from exc
         try:
             if allow_write and _sql_kind(sql)[0] != "select":
                 # 确认后的写操作：asyncpg execute 返回如 "UPDATE 5" 的状态串
@@ -378,17 +393,25 @@ class SqlEngine:
                 {c: _jsonable(rec[c]) for c in cols}
                 for rec in records[:max_rows]
             ]
+            total = len(records)
+            truncated = total > max_rows
+            if truncated:
+                # 契约 2.3：total 为截断前真实行数；count 包装失败时回退为已取回行数（至少这么多）
+                try:
+                    total = await conn.fetchval(f"SELECT count(*) FROM ({sql}) AS _t")
+                except Exception:
+                    pass
             return {
                 "columns": [{"key": c, "dtype": "string"} for c in cols],
                 "rows": rows,
-                "total": len(records),
-                "truncated": len(records) > max_rows,
+                "total": total,
+                "truncated": truncated,
             }
         except SqlNeedsConfirmation:
             raise
         except Exception as exc:
             raise SqlRoutingError(
-                f"SQL 执行失败：{str(exc).strip() or '未知错误'}"
+                f"SQL 执行失败：{_safe_error(exc)}"
             ) from exc
         finally:
             await conn.close()
@@ -405,7 +428,7 @@ class SqlEngine:
         try:
             conn = await aiomysql.connect(connect_timeout=30, **_mysql_kwargs(cfg))
         except Exception as exc:
-            raise SqlRoutingError(f"连接数据源失败：{exc}") from exc
+            raise SqlRoutingError(f"连接数据源失败：{_safe_error(exc)}") from exc
         try:
             async with conn.cursor() as cur:
                 await cur.execute(sql)
@@ -428,17 +451,30 @@ class SqlEngine:
                     {c: _jsonable(row[i]) for i, c in enumerate(cols)}
                     for row in records[:max_rows]
                 ]
+                total = len(records)
+                truncated = total > max_rows
+                if truncated:
+                    # 契约 2.3：total 为截断前真实行数；count 包装失败时回退为已取回行数
+                    try:
+                        await cur.execute(
+                            f"SELECT COUNT(*) FROM ({sql.strip().rstrip(';')}) AS _t"
+                        )
+                        count_row = await cur.fetchone()
+                        if count_row is not None:
+                            total = count_row[0]
+                    except Exception:
+                        pass
                 return {
                     "columns": [{"key": c, "dtype": "string"} for c in cols],
                     "rows": rows,
-                    "total": len(records),
-                    "truncated": len(records) > max_rows,
+                    "total": total,
+                    "truncated": truncated,
                 }
         except SqlNeedsConfirmation:
             raise
         except Exception as exc:
             raise SqlRoutingError(
-                f"SQL 执行失败：{str(exc).strip() or '未知错误'}"
+                f"SQL 执行失败：{_safe_error(exc)}"
             ) from exc
         finally:
             # aiomysql.close() 为同步方法（asyncpg 才是 async），不可 await

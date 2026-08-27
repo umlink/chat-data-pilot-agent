@@ -58,9 +58,14 @@ export function Header({ onLogout }: Props) {
   const exportConversation = async () => {
     if (!sessionId || !canExport) return
     const title = current?.title ?? '对话记录'
-    await downloadFile('/export', `${title}.md`, {
-      body: { type: 'conversation', format: 'markdown', data: { title, messages } },
-    })
+    try {
+      await downloadFile('/export', `${title}.md`, {
+        body: { type: 'conversation', format: 'markdown', data: { title, messages } },
+      })
+    } catch (e) {
+      // 导出失败给用户可读提示（下载走直连 fetch，不走统一信封的 ApiError 提示）
+      alert(`导出失败：${e instanceof Error ? e.message : '未知错误'}`)
+    }
   }
 
   const exportConversationPdf = () => {
