@@ -14,11 +14,11 @@ export function AppShell() {
   }
 
   return (
-    <div className="flex h-full overflow-hidden bg-background text-foreground">
+    <div className="flex h-full overflow-hidden bg-background text-foreground print:block print:h-auto print:overflow-visible">
       <Sidebar />
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-w-0 flex-1 flex-col print:block">
         <Header onLogout={logout} />
-        <main className="flex min-h-0 flex-1 flex-col">
+        <main className="flex min-h-0 flex-1 flex-col print:block">
           <Outlet />
         </main>
       </div>

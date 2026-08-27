@@ -84,7 +84,7 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="flex h-full w-[260px] shrink-0 flex-col border-r bg-sidebar">
+    <aside className="flex h-full w-[260px] shrink-0 flex-col border-r bg-sidebar print:hidden">
       {/* 品牌栏 */}
       <div className="flex h-14 shrink-0 items-center gap-2.5 border-b px-4">
         <div className="flex size-7 items-center justify-center rounded-[7px] bg-primary text-primary-foreground">

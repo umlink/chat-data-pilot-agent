@@ -58,7 +58,7 @@ export function Composer({ sessionId, disabled, onSend }: Props) {
     DATA_KEYWORDS.some((k) => trimmed.includes(k))
 
   return (
-    <div className="shrink-0 border-t bg-background px-6 py-3">
+    <div className="shrink-0 border-t bg-background px-6 py-3 print:hidden">
       <div className="flex items-end gap-2 rounded-xl border border-input bg-background p-2 transition-shadow focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/15">
         <div className="flex items-center gap-0.5">
           <DatasourcePicker

@@ -54,7 +54,7 @@ export function AttachmentDrafts() {
   const attachments = useChatStore((s) => s.attachments)
   if (attachments.length === 0) return null
   return (
-    <div className="flex shrink-0 flex-col items-end gap-1.5 px-6 pb-1.5">
+    <div className="flex shrink-0 flex-col items-end gap-1.5 px-6 pb-1.5 print:hidden">
       {attachments.map((a) => (
         <DraftCard key={a.attachment_id} draft={a} />
       ))}

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Download, FileText, History, LogOut, Settings } from 'lucide-react'
+import { Bell, Download, FileText, History, LogOut, Moon, Printer, Settings, Sun } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -9,6 +9,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { downloadFile } from '@/lib/api'
+import { ensureNotifyPermission, notifyPermission, notifySupported } from '@/lib/notify'
+import { getTheme, setTheme, type Theme } from '@/lib/theme'
 import { useLlmProviderStore } from '@/store/llmProviderStore'
 import { useChatStore } from '@/store/chatStore'
 import { collectSql } from '@/lib/sqlRecords'
@@ -33,10 +35,25 @@ export function Header({ onLogout }: Props) {
   const canExport = messages.length > 0
   const sqlCount = useMemo(() => collectSql(messages).length, [messages])
   const [sqlHistOpen, setSqlHistOpen] = useState(false)
+  // 明暗主题（PRD 5.6）
+  const [theme, setThemeState] = useState<Theme>(getTheme)
+  // 浏览器通知授权状态（PRD 5.6）
+  const [notifyOn, setNotifyOn] = useState(() => notifySupported() && notifyPermission() === 'granted')
 
   useEffect(() => {
     void load()
   }, [load])
+
+  const toggleTheme = () => {
+    const next: Theme = theme === 'dark' ? 'light' : 'dark'
+    setTheme(next)
+    setThemeState(next)
+  }
+
+  const toggleNotify = async () => {
+    const p = await ensureNotifyPermission()
+    setNotifyOn(p === 'granted')
+  }
 
   const exportConversation = async () => {
     if (!sessionId || !canExport) return
@@ -46,8 +63,14 @@ export function Header({ onLogout }: Props) {
     })
   }
 
+  const exportConversationPdf = () => {
+    if (!canExport) return
+    // PRD：PDF 通过浏览器打印当前对话内容（打印对话框可另存为 PDF）
+    window.print()
+  }
+
   return (
-    <header className="flex h-[52px] shrink-0 items-center gap-3 border-b bg-background px-6">
+    <header className="flex h-[52px] shrink-0 items-center gap-3 border-b bg-background px-6 print:hidden">
       <span className="truncate text-sm font-semibold text-foreground">
         {current?.title ?? '未选择会话'}
       </span>
@@ -65,8 +88,29 @@ export function Header({ onLogout }: Props) {
             <DropdownMenuItem onClick={() => void exportConversation()}>
               <FileText size={14} /> 导出对话（Markdown）
             </DropdownMenuItem>
+            <DropdownMenuItem onClick={exportConversationPdf}>
+              <Printer size={14} /> 导出对话（PDF）
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => void toggleTheme()}
+          aria-label={theme === 'dark' ? '切换到浅色主题' : '切换到深色主题'}
+          title={theme === 'dark' ? '切换到浅色主题' : '切换到深色主题'}
+        >
+          {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => void toggleNotify()}
+          aria-label={notifyOn ? '任务通知已开启' : '开启任务通知'}
+          title={notifyOn ? '任务通知已开启' : '开启任务通知（长任务完成/失败时提醒）'}
+        >
+          <Bell size={16} className={notifyOn ? 'text-primary' : ''} />
+        </Button>
         <Button
           variant="ghost"
           size="icon"

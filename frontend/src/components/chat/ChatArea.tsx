@@ -7,6 +7,7 @@ import { useDataSourceStore, type DataSourceInfo } from '@/store/dataSourceStore
 import { cancelAllStreams, useChat } from '@/hooks/useChat'
 import { useStickToBottom } from '@/hooks/useStickToBottom'
 import { ensureSession } from '@/hooks/useAttachments'
+import { CONTEXT_LIMIT, CONTEXT_WARN_RATIO, estimateContextTokens } from '@/lib/tokenEstimate'
 import type { Message } from '@/types/message'
 import { AttachmentDrafts } from './AttachmentDrafts'
 import { MessageList } from './MessageList'
@@ -38,6 +39,9 @@ export function ChatArea() {
   const rawMessages = useChatStore((s) => (sessionId ? s.messagesBySession[sessionId] : undefined))
   const sending = useChatStore((s) => (sessionId ? !!s.sending[sessionId] : false))
   const messages = useMemo(() => rawMessages ?? [], [rawMessages])
+  // 上下文接近上限提示（PRD 3.1.1）
+  const tokenEstimate = useMemo(() => estimateContextTokens(messages), [messages])
+  const nearContextLimit = tokenEstimate >= CONTEXT_LIMIT * CONTEXT_WARN_RATIO
 
   const { ref: scrollRef, follow, forceScroll } = useStickToBottom<HTMLDivElement>()
   useEffect(() => follow(), [messages, sending, follow])
@@ -101,8 +105,19 @@ export function ChatArea() {
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-8 py-5">
+    <div className="flex min-h-0 flex-1 flex-col print:block">
+      {nearContextLimit && (
+        <div
+          role="alert"
+          className="shrink-0 border-b border-warning/40 bg-warning-bg px-6 py-1.5 text-center text-[11px] text-warning"
+        >
+          对话上下文已接近上限（约 {tokenEstimate.toLocaleString('zh-CN')} tokens），建议新建会话或总结当前分析要点。
+        </div>
+      )}
+      <div
+        ref={scrollRef}
+        className="flex-1 overflow-y-auto px-8 py-5 print:h-auto print:overflow-visible"
+      >
         {messages.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-3 text-sm text-muted-foreground">
             <p>试试这些示例问题：</p>
