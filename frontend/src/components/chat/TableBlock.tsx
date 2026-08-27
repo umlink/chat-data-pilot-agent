@@ -3,6 +3,7 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 import { ArrowDown, ArrowUp, ArrowUpDown, Search } from 'lucide-react'
 import { downloadFile } from '@/lib/api'
 import type { TableColumn, TableContent } from '@/types/message'
+import { SqlQueryDialog } from './SqlQueryDialog'
 
 interface Props {
   content: TableContent
@@ -50,6 +51,7 @@ export function TableBlock({ content }: Props) {
   const [sort, setSort] = useState<{ key: string; dir: SortDir } | null>(null)
   const [exporting, setExporting] = useState<string | null>(null)
   const [exportError, setExportError] = useState('')
+  const [sqlOpen, setSqlOpen] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const widths = useMemo(
@@ -137,6 +139,15 @@ export function TableBlock({ content }: Props) {
           />
         </div>
         <div className="flex items-center gap-1">
+          {content.query && (
+            <button
+              onClick={() => setSqlOpen(true)}
+              aria-label="查看查询 SQL"
+              className="rounded border border-input px-2 py-1 text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground"
+            >
+              SQL
+            </button>
+          )}
           {(['csv', 'excel', 'json'] as const).map((fmt) => (
             <button
               key={fmt}
@@ -253,6 +264,9 @@ export function TableBlock({ content }: Props) {
 
       {exportError ? (
         <div className="border-t px-3 py-1.5 text-[11px] text-error">{exportError}</div>
+      ) : null}
+      {content.query ? (
+        <SqlQueryDialog sql={content.query} open={sqlOpen} onOpenChange={setSqlOpen} />
       ) : null}
     </div>
   )

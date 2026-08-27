@@ -138,9 +138,6 @@ export function BlockViewer({
         return (
           <div className="rounded-lg border bg-card shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
             <div className="p-4">
-              <div className="mb-3 text-[13px] font-semibold text-foreground">
-                {content.title ?? '图表'}
-              </div>
               <Suspense fallback={<ChartSkeleton />}>
                 <ChartBlock content={content} />
               </Suspense>

@@ -1,6 +1,6 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Download, FileText, LogOut, Settings } from 'lucide-react'
+import { Download, FileText, History, LogOut, Settings } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -11,6 +11,8 @@ import {
 import { downloadFile } from '@/lib/api'
 import { useLlmProviderStore } from '@/store/llmProviderStore'
 import { useChatStore } from '@/store/chatStore'
+import { collectSql } from '@/lib/sqlRecords'
+import { SqlHistoryDialog } from '@/components/chat/SqlHistoryDialog'
 
 interface Props {
   onLogout: () => void
@@ -29,6 +31,8 @@ export function Header({ onLogout }: Props) {
   const def = providers.find((p) => p.is_default)
   const modelLabel = def ? `${def.name} · ${def.default_model || '默认模型'}` : '默认模型'
   const canExport = messages.length > 0
+  const sqlCount = useMemo(() => collectSql(messages).length, [messages])
+  const [sqlHistOpen, setSqlHistOpen] = useState(false)
 
   useEffect(() => {
     void load()
@@ -63,6 +67,16 @@ export function Header({ onLogout }: Props) {
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+        <Button
+          variant="ghost"
+          size="icon"
+          disabled={sqlCount === 0}
+          onClick={() => setSqlHistOpen(true)}
+          aria-label="SQL 历史"
+          title={`SQL 历史（${sqlCount}）`}
+        >
+          <History size={16} />
+        </Button>
         <Button variant="ghost" size="icon" aria-label="设置" onClick={() => navigate('/config')}>
           <Settings size={16} />
         </Button>
@@ -70,6 +84,7 @@ export function Header({ onLogout }: Props) {
           <LogOut size={16} />
         </Button>
       </div>
+      <SqlHistoryDialog messages={messages} open={sqlHistOpen} onOpenChange={setSqlHistOpen} />
     </header>
   )
 }
