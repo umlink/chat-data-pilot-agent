@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from 'react'
-import { Maximize2, Settings2 } from 'lucide-react'
+import { Maximize2, Settings2, Star } from 'lucide-react'
+import { api } from '@/lib/api'
 import {
   Bar,
   BarChart,
@@ -32,6 +33,10 @@ import { SqlQueryDialog } from './SqlQueryDialog'
 
 interface Props {
   content: ChartContent
+  /** 展示「收藏到看板」按钮（对话中的图表可收藏；看板页自身不重复收藏） */
+  savable?: boolean
+  /** 溯源会话 ID（收藏快照关联会话；会话删除后快照保留） */
+  sessionId?: string
 }
 
 // 图表主色固定取语义 token（docs/UI设计规范.md 1.1 chart-1..5 橙色阶）
@@ -669,6 +674,8 @@ function ChartToolbar({
   onOpenSql,
   onOpenFullscreen,
   showSql,
+  saveState,
+  onSave,
 }: {
   chartRef: React.RefObject<HTMLDivElement | null>
   title: string
@@ -676,10 +683,37 @@ function ChartToolbar({
   onOpenSql: () => void
   onOpenFullscreen: () => void
   showSql: boolean
+  saveState?: 'idle' | 'saving' | 'saved' | 'error'
+  onSave?: () => void
 }) {
   const { downloadSvg, downloadPng, downloadPdf } = useChartExport(chartRef, title)
   return (
     <div className="absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+      {onSave && (
+        <button
+          onClick={onSave}
+          disabled={saveState !== 'idle'}
+          className="rounded bg-background/80 px-1.5 py-1 text-muted-foreground hover:text-foreground disabled:cursor-wait"
+          title={
+            saveState === 'saved'
+              ? '已收藏到看板'
+              : saveState === 'error'
+                ? '收藏失败，请重试'
+                : saveState === 'saving'
+                  ? '收藏中…'
+                  : '收藏到看板'
+          }
+          aria-label="收藏到看板"
+        >
+          <Star
+            className={cn(
+              'size-3.5',
+              saveState === 'saved' && 'fill-warning text-warning',
+              saveState === 'error' && 'text-error',
+            )}
+          />
+        </button>
+      )}
       <button
         onClick={onOpenFullscreen}
         className="rounded bg-background/80 px-1.5 py-1 text-muted-foreground hover:text-foreground"
@@ -739,12 +773,13 @@ function ChartToolbar({
  * 支持：折线/柱状/饼/散点（recharts）+ 热力图（自定义 SVG）；
  * 右上角悬浮工具：设置（本地配置覆盖）/ PNG / SVG / PDF 导出。
  */
-export function ChartBlock({ content }: Props) {
+export function ChartBlock({ content, savable = false, sessionId }: Props) {
   const chartRef = useRef<HTMLDivElement>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [sqlOpen, setSqlOpen] = useState(false)
   const [fullscreenOpen, setFullscreenOpen] = useState(false)
   const [settings, setSettings] = useState<ChartSettings>(DEFAULT_SETTINGS)
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const effective: ChartContent = useMemo(
     () => ({
       ...content,
@@ -759,6 +794,24 @@ export function ChartBlock({ content }: Props) {
     [content.series, settings.seriesColors],
   )
   const title = effective.title || '图表导出'
+
+  /** 收藏到个人看板：快照当前生效的 ChartContent（含标题/轴标签的本地定制）与查询 SQL */
+  const saveToBoard = async () => {
+    if (saveState !== 'idle') return
+    setSaveState('saving')
+    try {
+      await api.post('/saved-charts', {
+        title: effective.title || '图表',
+        session_id: sessionId ?? null,
+        chart_content: effective,
+        query: content.query ?? null,
+      })
+      setSaveState('saved')
+    } catch {
+      setSaveState('error')
+    }
+  }
+
   const hasData =
     ((content.series ?? []).length > 0 && content.series[0].x.length > 0) ||
     (content.matrix?.values.length ?? 0) > 0
@@ -780,6 +833,8 @@ export function ChartBlock({ content }: Props) {
           onOpenSql={() => setSqlOpen(true)}
           onOpenFullscreen={() => setFullscreenOpen(true)}
           showSql={!!content.query}
+          saveState={saveState}
+          onSave={savable ? () => void saveToBoard() : undefined}
         />
         <ChartPanel content={effective} colors={colors} />
       </div>

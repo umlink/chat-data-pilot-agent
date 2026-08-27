@@ -7,8 +7,15 @@ import { TemplatesPage } from '@/components/template/TemplatesPage'
 import { AppShell } from '@/routers/AppShell'
 import { GuestOnly, RequireAuth } from '@/routers/guards'
 
-// 配置页（Dialog/Select 等较重组件）路由级懒加载
+// 重页面（图表/表格/表单等较重组件）路由级懒加载
 const ConfigPage = lazy(() => import('@/components/config/ConfigPage').then((m) => ({ default: m.ConfigPage })))
+const SavedChartsPage = lazy(() =>
+  import('@/components/dashboard/SavedChartsPage').then((m) => ({ default: m.SavedChartsPage })),
+)
+const ReportsPage = lazy(() => import('@/components/reports/ReportsPage').then((m) => ({ default: m.ReportsPage })))
+const TokenStatsPage = lazy(() =>
+  import('@/components/stats/TokenStatsPage').then((m) => ({ default: m.TokenStatsPage })),
+)
 
 /**
  * 路由表（路由相关定义统一收敛在 src/routers/）。
@@ -16,6 +23,9 @@ const ConfigPage = lazy(() => import('@/components/config/ConfigPage').then((m) 
  *   /             对话分析（默认，未选会话空态）
  *   /session/:id  会话工作台（每个会话独立路由，便于前进/后退/分享）
  *   /datasources 数据源管理
+ *   /board       我的看板（收藏图表沉淀）
+ *   /reports     定时报告
+ *   /stats       Token 用量统计
  *   /config      配置管理
  *   /logs        日志查看
  */
@@ -34,6 +44,30 @@ export const router = createBrowserRouter([
       {
         path: 'datasources',
         element: <DataSourcePage />,
+      },
+      {
+        path: 'board',
+        element: (
+          <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">加载中…</div>}>
+            <SavedChartsPage />
+          </Suspense>
+        ),
+      },
+      {
+        path: 'reports',
+        element: (
+          <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">加载中…</div>}>
+            <ReportsPage />
+          </Suspense>
+        ),
+      },
+      {
+        path: 'stats',
+        element: (
+          <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">加载中…</div>}>
+            <TokenStatsPage />
+          </Suspense>
+        ),
       },
       {
         path: 'config',

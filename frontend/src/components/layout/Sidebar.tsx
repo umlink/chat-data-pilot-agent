@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
-import { Activity, Database, FileText, Pencil, Plus, Search, Settings2, Trash2 } from 'lucide-react'
+import { Activity, CalendarClock, Database, FileText, LineChart, Pencil, Plus, Search, Settings2, Trash2 } from 'lucide-react'
 import { api, getUsername } from '@/lib/api'
 import { cancelStream } from '@/hooks/useChat'
 import { useChatStore } from '@/store/chatStore'
@@ -8,7 +8,10 @@ import type { SessionInfo } from '@/types/message'
 
 const NAV = [
   { to: '/datasources', label: '数据源', icon: Database },
+  { to: '/board', label: '我的看板', icon: LineChart },
+  { to: '/reports', label: '定时报告', icon: CalendarClock },
   { to: '/templates', label: '模板', icon: FileText },
+  { to: '/stats', label: '用量统计', icon: Activity },
   { to: '/config', label: '管理后台', icon: Settings2, badge: true },
 ]
 

@@ -170,7 +170,7 @@ export function BlockViewer({
           <div className="rounded-lg border bg-card shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
             <div className="p-4">
               <Suspense fallback={<ChartSkeleton />}>
-                <ChartBlock content={content} />
+                <ChartBlock content={content} savable sessionId={sessionId} />
               </Suspense>
             </div>
           </div>
