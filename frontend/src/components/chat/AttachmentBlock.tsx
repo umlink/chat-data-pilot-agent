@@ -168,7 +168,31 @@ export function AttachmentBlock({ content, context }: Props) {
     },
     [context, patchBlock],
   )
-  useAttachmentPolling(content.attachment_id, (content.status === 'uploading' || content.status === 'parsing') && !!context, patchContent)
+  // 轮询回调：本地回填 + 终态（ready/failed）持久化解析结果，避免刷新后退回「上传中」
+  const onPollUpdate = useCallback(
+    (patch: Partial<AttachmentContent>) => {
+      patchContent(patch)
+      if (!context) return
+      if (patch.status === 'ready' || patch.status === 'failed') {
+        void updateAttachmentBlockState(content.attachment_id, context.messageId, context.blockId, {
+          status: patch.status,
+          file_size: patch.file_size ?? 0,
+          row_count: patch.row_count ?? null,
+          columns: patch.columns ?? null,
+          sheet_name: patch.sheet_name ?? null,
+          error: patch.error ?? null,
+        }).catch(() => {
+          /* 持久化失败不影响本地展示，下次轮询/操作重试 */
+        })
+      }
+    },
+    [patchContent, content.attachment_id, context],
+  )
+  useAttachmentPolling(
+    content.attachment_id,
+    (content.status === 'uploading' || content.status === 'parsing') && !!context,
+    onPollUpdate,
+  )
 
   const togglePreview = async () => {
     if (previewing) {
