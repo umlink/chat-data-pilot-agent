@@ -11,6 +11,7 @@ from collections.abc import AsyncGenerator, Iterable, Iterator
 
 from minio import Minio
 from minio.error import S3Error
+from urllib3 import PoolManager, Timeout
 
 from app.core.config import settings
 
@@ -28,7 +29,9 @@ def build_minio_client() -> Minio:
         access_key=settings.MINIO_ACCESS_KEY,
         secret_key=settings.MINIO_SECRET_KEY,
         secure=False,  # 内网部署走 HTTP；生产按需改为 secure
-        timeout=120,  # 连接/读取超时（秒）：避免 MinIO 挂起时任务无限阻塞
+        # 连接/读取超时（秒）：minio SDK 无 timeout 构造参数/方法，须经 http_client 注入，
+        # 避免 MinIO 挂起时任务长时间阻塞（默认 5 分钟过长）
+        http_client=PoolManager(timeout=Timeout(connect=120, read=120), maxsize=10),
     )
     return client
 
