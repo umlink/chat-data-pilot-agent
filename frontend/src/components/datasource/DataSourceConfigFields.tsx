@@ -21,7 +21,11 @@ export function DataSourceConfigFields({ type, form, onFieldChange }: Props) {
             {f.required ? ' *' : ''}
           </Label>
           {f.type === 'select' ? (
-            <Select value={form[f.name] ?? ''} onValueChange={(v) => onFieldChange(f.name, String(v ?? ''))}>
+            <Select
+              value={form[f.name] ?? ''}
+              items={Object.fromEntries((f.options ?? []).map((o) => [o.value, o.label]))}
+              onValueChange={(v) => onFieldChange(f.name, String(v ?? ''))}
+            >
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="请选择" />
               </SelectTrigger>

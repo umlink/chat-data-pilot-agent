@@ -152,7 +152,11 @@ export function DataSourceFormDialog({ open, editing, onOpenChange, onSaved }: P
 
           <div className="space-y-1.5">
             <Label>类型</Label>
-            <Select value={type} onValueChange={changeType}>
+            <Select
+              value={type}
+              items={Object.fromEntries(DATASOURCE_TYPE_OPTIONS.map((o) => [o.value, o.label]))}
+              onValueChange={changeType}
+            >
               <SelectTrigger className="w-full">
                 <SelectValue />
               </SelectTrigger>

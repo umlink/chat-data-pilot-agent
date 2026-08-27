@@ -20,6 +20,13 @@ function NumInput({ value, onChange, min = 0 }: { value: unknown; onChange: (v: 
   )
 }
 
+// Base UI Select 的 SelectValue 默认渲染原始 value（如 normal），
+// 需通过 items 映射才能在 trigger 中显示选中项 label
+const SAFE_MODE_ITEMS: Record<string, string> = {
+  normal: 'normal（允许执行，危险操作走确认）',
+  readonly: 'readonly（只允许 SELECT）',
+}
+
 /** 系统配置 tab：查询 / 任务 / 上传 / 会话 / SQL 安全 / 日志（docs/技术方案设计 3.6） */
 export function SystemConfigTab({ config, setField }: Props) {
   const query = config['system.query'] ?? {}
@@ -63,7 +70,7 @@ export function SystemConfigTab({ config, setField }: Props) {
 
       <ConfigCard title="SQL 安全模式" hint="M2 起由 SQL Agent 消费（system.sql）。normal 允许读写，readonly 只读校验">
         <FieldRow label="安全模式">
-          <Select value={String(sql.safe_mode ?? 'normal')} onValueChange={(v) => setField('system.sql', 'safe_mode', v)}>
+          <Select value={String(sql.safe_mode ?? 'normal')} items={SAFE_MODE_ITEMS} onValueChange={(v) => setField('system.sql', 'safe_mode', v)}>
             <SelectTrigger className="h-7 w-full">
               <SelectValue />
             </SelectTrigger>

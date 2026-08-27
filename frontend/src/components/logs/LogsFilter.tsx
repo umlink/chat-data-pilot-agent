@@ -22,6 +22,11 @@ const LEVEL_OPTIONS = [
   { value: 'CRITICAL', label: 'CRITICAL' },
 ]
 
+// Base UI Select 的 SelectValue 默认渲染原始 value（如 system/DEBUG），
+// 需通过 items 映射才能在 trigger 中显示选中项 label
+const CATEGORY_ITEMS = Object.fromEntries(CATEGORY_OPTIONS.map((o) => [o.value, o.label]))
+const LEVEL_ITEMS = Object.fromEntries(LEVEL_OPTIONS.map((o) => [o.value, o.label]))
+
 interface Props {
   category: string
   level: string
@@ -54,7 +59,7 @@ export function LogsFilter({
     <div className="flex flex-wrap items-end gap-3 rounded-lg border bg-card p-4">
       <div className="space-y-1.5">
         <Label>分类</Label>
-        <Select value={category} onValueChange={(v) => onCategoryChange(String(v ?? ''))}>
+        <Select value={category} items={CATEGORY_ITEMS} onValueChange={(v) => onCategoryChange(String(v ?? ''))}>
           <SelectTrigger className="w-[130px]">
             <SelectValue placeholder="全部分类" />
           </SelectTrigger>
@@ -70,7 +75,7 @@ export function LogsFilter({
 
       <div className="space-y-1.5">
         <Label>级别</Label>
-        <Select value={level} onValueChange={(v) => onLevelChange(String(v ?? ''))}>
+        <Select value={level} items={LEVEL_ITEMS} onValueChange={(v) => onLevelChange(String(v ?? ''))}>
           <SelectTrigger className="w-[130px]">
             <SelectValue placeholder="全部级别" />
           </SelectTrigger>

@@ -24,6 +24,13 @@ const EMPTY: LlmProviderForm = {
   default_model: '',
 }
 
+// Base UI Select 的 SelectValue 默认渲染原始 value（如 openai），
+// 需通过 items 映射才能在 trigger 中显示选中项 label
+const TYPE_ITEMS: Record<string, string> = {
+  openai: 'OpenAI（含兼容协议）',
+  anthropic: 'Anthropic',
+}
+
 /** LLM 供应商新建/编辑弹窗（docs/UI设计规范.md 3.13：API Key 留空/掩码=保留旧值）
  *  模型为单输入框：models=[model]、default_model=model（后端契约为数组，此处提交单元素数组） */
 export function ProviderFormDialog({ open, initial, onClose, onSubmit }: Props) {
@@ -97,7 +104,7 @@ export function ProviderFormDialog({ open, initial, onClose, onSubmit }: Props) 
           </div>
           <div className="space-y-1.5">
             <Label className="text-[13px]">协议类型</Label>
-            <Select value={form.type} onValueChange={(v) => setForm({ ...form, type: v as LlmProviderForm['type'] })}>
+            <Select value={form.type} items={TYPE_ITEMS} onValueChange={(v) => setForm({ ...form, type: v as LlmProviderForm['type'] })}>
               <SelectTrigger className="w-full">
                 <SelectValue />
               </SelectTrigger>

@@ -3,6 +3,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 
 const PAGE_SIZES = [20, 50, 100]
 
+// Base UI Select 的 SelectValue 默认渲染原始 value（如 20），
+// 需通过 items 映射才能在 trigger 中显示选中项 label（20 条/页）
+const PAGE_SIZE_ITEMS = Object.fromEntries(PAGE_SIZES.map((s) => [String(s), `${s} 条/页`]))
+
 interface Props {
   total: number
   page: number
@@ -21,7 +25,7 @@ export function LogsPagination({ total, page, pageSize, loading, onPageChange, o
         共 {total} 条 · 第 {page} / {totalPages} 页
       </p>
       <div className="flex items-center gap-2">
-        <Select value={String(pageSize)} onValueChange={(v) => onPageSizeChange(Number(v ?? '20'))}>
+        <Select value={String(pageSize)} items={PAGE_SIZE_ITEMS} onValueChange={(v) => onPageSizeChange(Number(v ?? '20'))}>
           <SelectTrigger size="sm" className="w-[100px]">
             <SelectValue />
           </SelectTrigger>
