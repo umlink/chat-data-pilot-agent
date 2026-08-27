@@ -127,15 +127,25 @@ export function BlockViewer({
   const { send } = useChat()
   const [cancelling, setCancelling] = useState(false)
 
-  /** 取消进行中的任务（PRD 补充「任务取消」）：POST /api/tasks/{id}/cancel + 本地乐观标记 */
+  /** 取消进行中的任务（PRD 补充「任务取消」）：POST /api/tasks/{id}/cancel，按服务端快照更新状态 */
   const cancelTask = async (taskId: string) => {
     if (!sessionId || !messageId || cancelling) return
     setCancelling(true)
     try {
-      await api.post(`/tasks/${taskId}/cancel`)
+      const snap = await api.post<{ status?: string }>(`/tasks/${taskId}/cancel`)
       const st = useChatStore.getState()
-      st.patchBlock(sessionId, messageId, block.id, { cancelled: true, cancellable: false })
-      st.setBlockStatus(sessionId, messageId, block.id, 'cancelled')
+      const status = snap?.status
+      if (status === 'cancelled') {
+        st.patchBlock(sessionId, messageId, block.id, { cancelled: true, cancellable: false })
+        st.setBlockStatus(sessionId, messageId, block.id, 'cancelled')
+      } else if (status === 'failed') {
+        st.patchBlock(sessionId, messageId, block.id, { failed: true, cancellable: false })
+        st.setBlockStatus(sessionId, messageId, block.id, 'failed')
+      } else if (status === 'success') {
+        // 任务已成功：仅解除可取消标记，不误标已取消
+        st.patchBlock(sessionId, messageId, block.id, { cancellable: false })
+      }
+      // 任务仍 pending/running：取消已受理，终态由 task_status 事件驱动
     } catch {
       /* 取消失败：任务可能已完成，保持现状 */
     } finally {
@@ -213,7 +223,13 @@ export function BlockViewer({
           <div>
             <div className="mb-1 flex justify-between text-xs text-muted-foreground">
               <span>
-                {content.cancelled ? '已取消' : content.failed ? '任务失败' : (content.current_step ?? '处理中…')}
+                {content.cancelled
+                  ? '已取消'
+                  : content.failed
+                    ? content.error
+                      ? `任务失败：${content.error}`
+                      : '任务失败'
+                    : (content.current_step ?? '处理中…')}
               </span>
               <span>{done ? '' : `${content.percent}%`}</span>
             </div>

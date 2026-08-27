@@ -23,7 +23,7 @@ from sqlalchemy import select
 
 from app.agents.tools import TOOL_DEFINITIONS, ToolCtx, ToolEngine
 from app.core.database import SessionFactory
-from app.llm.base import Usage, build_llm_provider
+from app.llm.base import build_llm_provider
 from app.models.user import Message, Session
 from app.services.config_service import ConfigService
 from app.services.data_service import DataService
@@ -139,13 +139,15 @@ def _extract_tables(sql: str) -> list[str]:
 
 
 def _build_sources_block(
-    tctx: ToolCtx, datasource_label: str | None
+    tctx: ToolCtx,
+    datasource_label: str | None,
+    side_blocks: list[dict[str, Any]],
 ) -> dict[str, Any] | None:
     """根据本回合工具执行轨迹确定性推导『数据来源』证据链（契约 2.11 sources）。
 
     数据源 = run_sql 调用的 datasource（或会话所选/默认）；表名 = 各 SQL 的 FROM/JOIN 解析；
-    查询 = 本回合去重后的 SQL（run_sql 调用 + table/chart block 的 query）。
-    全部从已落库的 tctx 轨迹推导，不依赖 LLM 额外格式化。
+    查询 = 本回合去重后的 SQL（run_sql 调用 + 副作用 block 的 query）。
+    全部从已落库的 tctx 轨迹推导，不依赖 LLM 额外格式化；本回合无任何查询时不生成。
     """
     sqls: list[str] = []
     seen: set[str] = set()
@@ -155,14 +157,14 @@ def _build_sources_block(
             if sql and sql not in seen:
                 seen.add(sql)
                 sqls.append(sql)
-    for b in tctx.blocks:
+    for b in side_blocks:
         if b.get("type") in ("table", "chart"):
             q = str((b.get("content") or {}).get("query") or "").strip()
             if q and q not in seen:
                 seen.add(q)
                 sqls.append(q)
-    if not sqls and not datasource_label:
-        return None
+    if not sqls:
+        return None  # 本回合未执行任何查询 → 无证据链可展示
     items: list[dict[str, Any]] = []
     if datasource_label:
         items.append({"label": f"数据源：{datasource_label}"})
@@ -506,7 +508,6 @@ class ChatService:
         )
         parts: list[str] = []
         side_blocks: list[dict[str, Any]] = []
-        usage = Usage()
         stop_reason = "text"
         try:
             for _round in range(MAX_TOOL_ROUNDS):
@@ -582,7 +583,7 @@ class ChatService:
             metadata["tool_calls"] = tctx.tool_calls
         # 数据来源证据链（契约 2.11 sources）：从工具执行轨迹确定性推导
         datasource_label = await self._resolve_datasource_label(user_id, datasource_id)
-        sources_block = _build_sources_block(tctx, datasource_label)
+        sources_block = _build_sources_block(tctx, datasource_label, side_blocks)
         blocks = [text_block, *side_blocks]
         if sources_block:
             blocks.append(sources_block)

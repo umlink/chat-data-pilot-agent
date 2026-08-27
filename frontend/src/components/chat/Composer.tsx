@@ -19,10 +19,9 @@ const DATA_KEYWORDS = [
   '明细', '平均', '最高', '最低', '多少', '几个', '哪些',
 ]
 
-/** 指代修正启发式关键词：命中则提示将基于上一轮分析执行 */
-const CORRECTION_KEYWORDS = [
-  '改成', '换成', '不是', '不对', '接着', '继续', '用上次', '按上一个', '重新按', '按周',
-]
+/** 指代修正启发式关键词：修正类任意位置命中、延续类句子开头命中即提示基于上一轮分析执行 */
+const CORRECTION_KEYWORDS = ['改成', '换成', '不是', '不对', '用上次', '按上一个', '重新按']
+const CONTINUE_KEYWORDS = ['接着', '继续']
 
 /** 输入区 Composer（docs/UI设计规范.md 3.12）：文本 + 附件上传 + 上下文数据源选择 */
 export function Composer({ sessionId, disabled, onSend }: Props) {
@@ -65,7 +64,8 @@ export function Composer({ sessionId, disabled, onSend }: Props) {
   const showCorrectionHint =
     trimmed.length > 0 &&
     !disabled &&
-    CORRECTION_KEYWORDS.some((k) => trimmed.startsWith(k))
+    (CORRECTION_KEYWORDS.some((k) => trimmed.includes(k)) ||
+      CONTINUE_KEYWORDS.some((k) => trimmed.startsWith(k)))
 
   return (
     <div className="shrink-0 border-t bg-background px-6 py-3 print:hidden">

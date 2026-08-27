@@ -231,6 +231,7 @@ interface SourcesContent {
   表名 = 各 SQL 的 FROM/JOIN 解析去重；查询 = 本回合去重后的 SQL（run_sql 调用 + table/chart 的 query）。
 - 顺序：数据源 → 表名 → 查询；sql 项前端渲染为可点击 chip（复用 SqlQueryDialog）。
 - 仅在正常完成路径（非确认中断）追加，置于 text 与 table/chart 之后、suggestions 之前。
+- 本回合未执行任何查询（纯文本/澄清回复）时不生成 sources block。
 
 ---
 
