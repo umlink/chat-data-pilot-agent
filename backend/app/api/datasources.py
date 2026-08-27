@@ -6,6 +6,7 @@
 - POST /api/datasources/update         更新（body 含 id；掩码保留旧密文）
 - POST /api/datasources/delete         删除（body 含 id；校验归属）
 - GET  /api/datasources/{id}/preview   预览前 N 行（校验归属）
+- GET  /api/datasources/{id}/schema    提取表结构（表清单/列/注释/采样，校验归属）
 """
 import logging
 from typing import Annotated
@@ -181,5 +182,22 @@ async def preview_datasource(
     try:
         data = await _data_service.preview(ds, table=table or None, limit=limit)
     except NotImplementedError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return ApiResponse(data=data)
+
+
+@router.get("/{ds_id}/schema", response_model=ApiResponse[dict])
+async def schema_datasource(
+    ds_id: str,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """提取数据源表结构（PG/MySQL：表清单 + 列名/类型/注释 + 每表 3 行采样）。"""
+    ds = await _get_owned_datasource(db, user, ds_id)
+    try:
+        data = await _data_service.get_schema(ds)
+    except NotImplementedError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     return ApiResponse(data=data)
