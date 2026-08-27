@@ -23,6 +23,10 @@ class User(Base):
     sessions = relationship("Session", back_populates="user", cascade="all, delete-orphan")
     datasources = relationship("Datasource", back_populates="user", cascade="all, delete-orphan")
     templates = relationship("Template", back_populates="user", cascade="all, delete-orphan")
+    saved_charts = relationship("SavedChart", back_populates="user", cascade="all, delete-orphan")
+    scheduled_reports = relationship(
+        "ScheduledReport", back_populates="user", cascade="all, delete-orphan"
+    )
 
 
 class Session(Base):

@@ -13,7 +13,10 @@ from app.api import (
     export,
     llm_providers,
     logs,
+    reports,
+    saved_charts,
     sessions,
+    stats,
     tasks,
     templates,
     upload,
@@ -31,3 +34,6 @@ api_router.include_router(config.router)
 api_router.include_router(llm_providers.router)
 api_router.include_router(templates.router)
 api_router.include_router(logs.router)
+api_router.include_router(saved_charts.router)
+api_router.include_router(reports.router)
+api_router.include_router(stats.router)

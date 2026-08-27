@@ -16,6 +16,7 @@ from app.core.database import close_db, init_db
 from app.core.redis import close_redis
 from app.initial_data import seed
 from app.services.log_service import setup_structlog
+from app.tasks.scheduler import Scheduler
 from app.tasks.worker import Worker
 
 setup_structlog()
@@ -31,6 +32,7 @@ if settings.ENABLE_AUTH and settings.SECRET_KEY == "change-me-in-prod":
     )
 
 _worker = Worker(count=3)
+_scheduler = Scheduler()
 
 
 @asynccontextmanager
@@ -39,8 +41,10 @@ async def lifespan(app: FastAPI):
         await init_db()
     await seed()
     await _worker.start()
+    await _scheduler.start()  # 数据源心跳 + 定时报告轮询（tasks/scheduler.py）
     logger.info("DataPilotAgent backend 已启动")
     yield
+    await _scheduler.stop()
     await _worker.stop()
     await close_db()
     await close_redis()

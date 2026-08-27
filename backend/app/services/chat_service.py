@@ -15,6 +15,7 @@ import datetime
 import json
 import logging
 import re
+import time
 import uuid
 from typing import Any, AsyncGenerator
 from uuid import UUID
@@ -27,8 +28,10 @@ from app.llm.base import build_llm_provider
 from app.models.user import Message, Session
 from app.services.config_service import ConfigService
 from app.services.data_service import DataService
+from app.services.log_service import LogService
 
 logger = logging.getLogger("datapilot.chat")
+_log_service = LogService()
 
 DEFAULT_TITLES = {"新会话", "新对话", "新聊天"}
 HISTORY_ROUNDS = 10  # 最近 10 轮（20 条）进入上下文
@@ -566,6 +569,7 @@ class ChatService:
         parts: list[str] = []
         side_blocks: list[dict[str, Any]] = []
         stop_reason = "text"
+        t0 = time.monotonic()  # AI 日志 latency_ms 口径：首个 LLM 轮开始 → done
         try:
             for _round in range(MAX_TOOL_ROUNDS):
                 tool_call: dict | None = None
@@ -641,6 +645,22 @@ class ChatService:
             "completion_tokens": usage.completion_tokens,
             "total_tokens": usage.total_tokens,
         }
+        # AI 用量日志（CLAUDE.md 4.7 契约：model / tokens / latency_ms）：stats/tokens 的数据源。
+        # 写库失败由 LogService 内部降级，不影响对话主流程。
+        try:
+            await _log_service.ai(
+                model=str(llm_cfg.get("model") or "unknown"),
+                tokens=int(usage.total_tokens or 0),
+                latency_ms=round((time.monotonic() - t0) * 1000),
+                message="LLM 对话完成",
+                session_id=str(session_id),
+                user_id=str(user_id),
+                prompt_tokens=int(usage.prompt_tokens or 0),
+                completion_tokens=int(usage.completion_tokens or 0),
+                stop_reason=stop_reason,
+            )
+        except Exception:  # 契约字段校验等异常不干扰对话主流程
+            logger.exception("AI 用量日志写入失败（已忽略）", extra={"session_id": str(session_id)})
         raw_text = "".join(parts)
         clean_text, suggestion_items = _extract_suggestions(raw_text)
         text_block["status"] = "completed"
