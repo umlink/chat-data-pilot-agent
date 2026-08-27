@@ -150,10 +150,8 @@ export interface AttachmentContent {
   columns?: { name: string; dtype: string }[]
   preview_rows?: Record<string, unknown>[]
   error?: string
-  /** 附件已被用户移除（block 保留但引用失效，PRD 3.1.5） */
+  /** 附件已被用户移除（block 保留但引用失效，PRD 3.1.5；由 POST /upload/{id}/block-state 持久化） */
   removed?: boolean
-  /** 被替换为的新附件 id（替换成功后回填） */
-  replaced_by?: string
 }
 
 // content 具体结构由 type 决定；运行时以对象形式访问

@@ -1,10 +1,11 @@
 import { useCallback, useRef, useState, type ReactNode } from 'react'
 import { Eye, EyeOff, FileText, Loader2, RefreshCw, Trash2 } from 'lucide-react'
-import { api } from '@/lib/api'
+import { ApiError, api } from '@/lib/api'
 import {
   formatFileSize,
   removeAttachmentRemote,
   replaceOne,
+  updateAttachmentBlockState,
   useAttachmentPolling,
 } from '@/hooks/useAttachments'
 import { useChatStore } from '@/store/chatStore'
@@ -161,9 +162,9 @@ export function AttachmentBlock({ content, context }: Props) {
 
   // 替换后的新附件轮询（状态 uploading/parsing 时激活；onUpdate 回填 block）
   const patchContent = useCallback(
-    (patch: Partial<AttachmentContent>) => {
+    (patch: Record<string, unknown>) => {
       if (!context) return
-      patchBlock(context.sessionId, context.messageId, context.blockId, patch as Record<string, unknown>)
+      patchBlock(context.sessionId, context.messageId, context.blockId, patch)
     },
     [context, patchBlock],
   )
@@ -181,7 +182,13 @@ export function AttachmentBlock({ content, context }: Props) {
       const data = await api.get<PreviewResponse>(`/upload/${content.attachment_id}/preview`)
       setPreviewData(data)
     } catch (e) {
-      setActionError(e instanceof Error ? e.message : '预览加载失败')
+      const msg =
+        e instanceof ApiError && e.code === 404
+          ? '附件不存在，可能已被移除或过期'
+          : e instanceof Error
+            ? e.message
+            : '预览加载失败'
+      setActionError(msg)
     }
   }
 
@@ -191,21 +198,22 @@ export function AttachmentBlock({ content, context }: Props) {
     setActionError('')
     try {
       const data = await replaceOne(content.attachment_id, file, context.sessionId)
-      // 引用切到新附件：重置解析相关字段，轮询解析状态
-      patchContent({
+      // 引用切到新附件：旧解析字段以 null 清空（服务端持久化同步），再本地更新
+      const next: Record<string, unknown> = {
         attachment_id: data.attachment_id,
         file_name: data.file_name,
         file_type: data.file_type,
         file_size: 0,
         status: 'uploading',
-        sheet_name: undefined,
-        row_count: undefined,
-        columns: undefined,
-        preview_rows: undefined,
-        error: undefined,
+        sheet_name: null,
+        row_count: null,
+        columns: null,
+        preview_rows: null,
+        error: null,
         removed: false,
-        replaced_by: undefined,
-      })
+      }
+      await updateAttachmentBlockState(data.attachment_id, context.messageId, context.blockId, next)
+      patchContent(next)
       setPreviewing(false)
       setPreviewData(null)
     } catch (e) {
@@ -222,8 +230,12 @@ export function AttachmentBlock({ content, context }: Props) {
     setBusy(true)
     setActionError('')
     try {
+      // 先持久化 block 状态（删除后附件记录不存在，无法再定位 block），再删资源
+      await updateAttachmentBlockState(content.attachment_id, context.messageId, context.blockId, {
+        removed: true,
+      })
       await removeAttachmentRemote(content.attachment_id)
-      patchContent({ removed: true, status: content.status === 'failed' ? 'failed' : 'ready', error: undefined })
+      patchContent({ removed: true, error: undefined })
       setPreviewing(false)
       setPreviewData(null)
     } catch (e) {

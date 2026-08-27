@@ -154,6 +154,7 @@ class AttachmentContent(BaseModel):
     columns: Optional[list[dict[str, str]]] = None
     preview_rows: Optional[list[dict[str, Any]]] = None
     error: Optional[str] = None
+    removed: Optional[bool] = None  # 用户已移除（block 保留，引用失效；PRD 3.1.5）
 
 
 class Block(BaseModel):

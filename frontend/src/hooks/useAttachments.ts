@@ -85,6 +85,24 @@ export async function removeAttachmentRemote(attachmentId: string): Promise<void
   await api.post<{ code: number }>('/upload/delete', { attachment_id: attachmentId })
 }
 
+/**
+ * 持久化附件 block 状态（POST /api/upload/{id}/block-state）：
+ * 替换/移除后写回 messages.blocks，保证刷新后状态不丢失（契约 6 章唯一事实源）。
+ * patch 中 null 表示清空字段（替换后旧解析字段移除）。
+ */
+export async function updateAttachmentBlockState(
+  attachmentId: string,
+  messageId: string,
+  blockId: string,
+  patch: Record<string, unknown>,
+): Promise<void> {
+  await api.post<{ code: number }>(`/upload/${attachmentId}/block-state`, {
+    message_id: messageId,
+    block_id: blockId,
+    patch,
+  })
+}
+
 /** multipart 通用上传（JSON request 不适用，需显式 FormData + Authorization） */
 async function multipartUpload(
   path: string,

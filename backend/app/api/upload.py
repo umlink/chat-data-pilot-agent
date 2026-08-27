@@ -24,7 +24,7 @@ from app.api.deps import get_current_user
 from app.api.sessions import _get_owned_session
 from app.core.database import get_db
 from app.models.datasource import Attachment
-from app.models.user import Session, User
+from app.models.user import Message, Session, User
 from app.schemas.common import ApiResponse
 from app.services.attachment_service import (
     READ_CHUNK,
@@ -43,6 +43,81 @@ _upload_service = AttachmentService()
 
 class DeleteAttachmentRequest(BaseModel):
     attachment_id: str
+
+
+# 允许持久化到 attachment block 的 content 键（白名单，防止任意字段覆盖）
+_BLOCK_STATE_ALLOWED_KEYS = frozenset(
+    {
+        "removed",
+        "attachment_id",
+        "file_name",
+        "file_type",
+        "file_size",
+        "status",
+        "sheet_name",
+        "row_count",
+        "columns",
+        "error",
+    }
+)
+
+
+class UpdateBlockStateRequest(BaseModel):
+    message_id: str
+    block_id: str
+    patch: dict[str, object] = {}
+
+
+async def _update_attachment_block(
+    db: AsyncSession,
+    user: User,
+    attachment: Attachment,
+    message_id: str,
+    block_id: str,
+    patch: dict[str, object],
+) -> None:
+    """持久化 attachment block 的 content 状态（替换/移除后，契约 2.10 可更新字段）。
+
+    归属链校验：附件属于当前用户（调用方）→ 消息属于同一会话（同用户）。
+    仅允许白名单键，防止任意字段覆盖消息内 block。
+    """
+    invalid = [k for k in patch if k not in _BLOCK_STATE_ALLOWED_KEYS]
+    if invalid:
+        raise HTTPException(status_code=400, detail=f"不允许更新的字段: {', '.join(invalid)}")
+    try:
+        msg = await db.get(Message, UUID(message_id))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="消息 ID 非法")
+    if msg is None:
+        raise HTTPException(status_code=404, detail="消息不存在")
+    sess = await db.get(Session, msg.session_id)
+    if sess is None or sess.user_id != user.id:
+        raise HTTPException(status_code=404, detail="消息不存在")
+    if str(attachment.session_id) != str(msg.session_id):
+        raise HTTPException(status_code=404, detail="附件不属于该消息的会话")
+    blocks = msg.blocks or []
+    new_blocks: list[dict] = []
+    matched = False
+    for block in blocks:
+        if block.get("id") == block_id:
+            content = dict(block.get("content") or {})
+            # patch 中 null 表示清空该字段（替换后旧解析字段应移除），非 null 值直接写入
+            for key, value in patch.items():
+                if value is None:
+                    content.pop(key, None)
+                else:
+                    content[key] = value
+            new_block = dict(block)
+            new_block["content"] = content
+            new_blocks.append(new_block)
+            matched = True
+        else:
+            new_blocks.append(dict(block))
+    if not matched:
+        raise HTTPException(status_code=404, detail="消息内未找到该 Block")
+    # 全新 list/dict：JSONB 对「同引用对象 + 内容相等拷贝」判定未变更，需重建触发 UPDATE
+    msg.blocks = new_blocks
+    await db.commit()
 
 
 async def _owned_attachment(
@@ -113,9 +188,14 @@ async def upload_preview(
     """附件预览：读会话级 SQLite 附件表前 N 行（PRD 3.1.5 / 契约 2.10 preview_rows）。"""
     att = await _owned_attachment(db, user, attachment_id)
     table_name = attachment_table_name(attachment_id)
+    cached_row_count = (att.parsed_schema or {}).get("row_count")
     try:
         data = await asyncio.to_thread(
-            preview_attachment_table, str(att.session_id), table_name, limit
+            preview_attachment_table,
+            str(att.session_id),
+            table_name,
+            limit,
+            cached_row_count,
         )
     except AttachmentError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
@@ -177,3 +257,20 @@ async def upload_delete(
         extra={"user": str(user.id), "resource": f"attachment:{att.id}", "action": "delete"},
     )
     return ApiResponse(data=None, message="附件已移除")
+
+
+@router.post("/{attachment_id}/block-state", response_model=ApiResponse)
+async def upload_block_state(
+    attachment_id: str,
+    req: UpdateBlockStateRequest,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """持久化 attachment block 状态（替换/移除后写回 messages.blocks）。
+
+    解决「前端操作后刷新状态丢失」：替换（引用切新附件）与移除（removed 标记）
+    均为可更新状态，服务端持久化后按契约第 6 章成为唯一事实源。
+    """
+    att = await _owned_attachment(db, user, attachment_id)
+    await _update_attachment_block(db, user, att, req.message_id, req.block_id, req.patch)
+    return ApiResponse(data=None, message="已更新")

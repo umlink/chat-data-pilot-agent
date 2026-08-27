@@ -205,8 +205,13 @@ interface AttachmentContent {
   columns?: { name: string; dtype: string }[];
   preview_rows?: Record<string, any>[];   // 前 50 行
   error?: string;                 // status=failed 时
+  removed?: boolean;              // 用户已移除（block 保留但引用失效；POST /upload/{id}/block-state 持久化）
 }
 ```
+
+附件 block 的状态变更（替换/移除）通过 `POST /api/upload/{id}/block-state` 持久化到
+`messages.blocks`（body：`message_id`/`block_id`/`patch`，patch 键白名单且 `null` 表示清空
+该字段），与「不可变追加」不冲突——本类变更仅更新可更新字段（见 6.2 状态流转表）。
 
 ---
 

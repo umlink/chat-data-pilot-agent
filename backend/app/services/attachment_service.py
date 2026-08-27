@@ -466,12 +466,17 @@ async def file_parse_executor(params: dict, ctx: "ExecCtx") -> dict:
 
 
 def preview_attachment_table(
-    session_id: str, table_name: str, limit: int = 50
+    session_id: str,
+    table_name: str,
+    limit: int = 50,
+    cached_row_count: int | None = None,
 ) -> dict[str, Any]:
     """读取会话级 SQLite 附件表前 limit 行（PRD 3.1.5 附件预览，默认前 50 行）。
 
     只读连接（mode=ro），表名按白名单校验（必须真实存在于该会话库），
-    防止任意字符串注入 SQL。返回 {columns, rows, row_count, truncated}。
+    防止任意字符串注入 SQL。行数优先用 parsed_schema 缓存值（附件表解析后
+    不再写入，计数恒定），避免超大附件 COUNT(*) 全表开销。
+    返回 {columns, rows, row_count, truncated}。
     """
     db_path = settings.tmp_dir / f"{session_id}.db"
     if not db_path.exists():
@@ -483,7 +488,8 @@ def preview_attachment_table(
         ).fetchone()
         if not found:
             raise AttachmentError("附件数据表不存在，可能已移除或过期", status_code=404)
-        row_count = conn.execute(f'SELECT COUNT(*) FROM "{table_name}"').fetchone()[0]
+        if cached_row_count is None:
+            cached_row_count = conn.execute(f'SELECT COUNT(*) FROM "{table_name}"').fetchone()[0]
         columns = [row[1] for row in conn.execute(f'PRAGMA table_info("{table_name}")').fetchall()]
         rows = conn.execute(f'SELECT * FROM "{table_name}" LIMIT ?', (limit,)).fetchall()
     finally:
@@ -491,8 +497,8 @@ def preview_attachment_table(
     return {
         "columns": columns,
         "rows": [dict(zip(columns, row)) for row in rows],
-        "row_count": row_count,
-        "truncated": int(row_count) > limit,
+        "row_count": cached_row_count,
+        "truncated": int(cached_row_count) > limit,
     }
 
 
