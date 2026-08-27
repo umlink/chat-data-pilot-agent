@@ -73,7 +73,8 @@ SYSTEM_PROMPT = (
     "工作方式：问题缺少必要参数（时间范围、指标口径等）时先澄清再行动，不要臆测；"
     "澄清时先输出澄清问题文本，然后换行输出一行『可点击选项：』，其后每行一个选项（格式：编号 + 文案，如『1. 近 7 天』），"
     "选项文案会被用户直接点击发送，请确保选项完整可执行；"
-    "每次完成分析并输出结论后，同样换行输出一行『可点击选项：』，其后给出 2-3 个基于当前结果、可直接执行的下一步分析选项"
+    "每次完成分析并输出结论后，同样换行输出一行『可点击选项：』（必须用该标记行，不要用其他文案替代），"
+    "其后给出 2-3 个基于当前结果、可直接执行的下一步分析选项"
     "（如按其他维度分组、生成图表、深入某条洞察），格式与澄清选项一致；"
     "对话中用户可能用『改成/不是/换成/用上次/接着/那/它』等指代上一轮分析，先解析指代对象（表、口径、图表）"
     "再基于上轮结果行动，例如『改成按周分组』= 对上一轮查询结果重新按周聚合，不要当成全新问题；"
@@ -101,7 +102,8 @@ def _extract_suggestions(text: str) -> tuple[str, list[dict[str, str]] | None]:
         return text, None
     items: list[dict[str, str]] = []
     for line in text[m.end() :].splitlines():
-        hit = re.match(r"^\s*\d+[.、]\s*(.+)$", line)
+        # 兼容编号（1. / 1、）与列表（- / • / *）两种选项格式（LLM 输出不稳定时兜底）
+        hit = re.match(r"^\s*(?:\d+[.、]|[-•*])\s*(.+)$", line)
         if hit:
             item = hit.group(1).strip()
             if item:
@@ -515,9 +517,13 @@ class ChatService:
                 async for chunk in provider.stream_chat_with_tools(messages, TOOL_DEFINITIONS):
                     if isinstance(chunk, dict):
                         tool_call = chunk.get("__tool_call__")
-                    else:
-                        parts.append(chunk)
-                        yield {"event": "token", "data": {"block_id": text_block_id, "content": chunk}}
+                        continue
+                    parts.append(chunk)
+                    # 已出现「可点击选项：」标记：其后的选项行不再流式推送
+                    # （将渲染为 suggestions block 按钮，避免实时文本与可点击按钮重复；契约 4.4）
+                    if _SUGGESTION_HEADER.search("".join(parts)):
+                        continue
+                    yield {"event": "token", "data": {"block_id": text_block_id, "content": chunk}}
 
                 if tool_call is None:
                     break  # 纯文本输出 → 本轮结束
