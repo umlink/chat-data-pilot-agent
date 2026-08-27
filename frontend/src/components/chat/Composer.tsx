@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { AtSign, FileText, Loader2, Paperclip, Send } from 'lucide-react'
+import { FileText, Loader2, Paperclip, Send } from 'lucide-react'
 import { useAttachments } from '@/hooks/useAttachments'
 import { useChatStore } from '@/store/chatStore'
 import type { Template } from '@/types/template'
@@ -103,14 +103,6 @@ export function Composer({ sessionId, disabled, onSend }: Props) {
           >
             <FileText size={15} />
           </button>
-          <button
-            className="inline-flex size-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
-            aria-label="提及数据集"
-            title="提及数据集（待开放）"
-            disabled
-          >
-            <AtSign size={15} />
-          </button>
         </div>
         <textarea
           value={text}
@@ -157,7 +149,7 @@ export function Composer({ sessionId, disabled, onSend }: Props) {
         </div>
       ) : null}
       <div className="mt-1.5 text-center text-[11px] text-muted-foreground">
-        Enter 发送 · Shift+Enter 换行 · @ 提及数据集
+        Enter 发送 · Shift+Enter 换行
       </div>
 
       <TemplatePickerDialog
