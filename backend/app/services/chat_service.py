@@ -14,6 +14,7 @@
 import datetime
 import json
 import logging
+import re
 import uuid
 from typing import Any, AsyncGenerator
 from uuid import UUID
@@ -70,6 +71,8 @@ SYSTEM_PROMPT = (
     "3. create_chart：基于 table block 生成图表（line/bar/pie/scatter/heatmap），指定 dimension 与 measures 即可。\n"
     "4. request_confirmation：危险写操作前请求用户确认；调用后本轮对话终止。\n"
     "工作方式：问题缺少必要参数（时间范围、指标口径等）时先澄清再行动，不要臆测；"
+    "澄清时先输出澄清问题文本，然后换行输出一行『可点击选项：』，其后每行一个选项（格式：编号 + 文案，如『1. 近 7 天』），"
+    "选项文案会被用户直接点击发送，请确保选项完整可执行；"
     "需要数据先 run_sql（结果自动存为 table block）；统计计算用 run_python；"
     "适合可视化时用 create_chart。工具执行完，用中文总结结论、给出数据洞察。"
 )
@@ -77,6 +80,42 @@ SYSTEM_PROMPT = (
 
 def _now_iso() -> str:
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+
+# 契约 4.4 澄清机制：LLM 在文本中输出「可点击选项：」标记行，其下为编号选项
+_SUGGESTION_HEADER = re.compile(r"^可点击选项[:：]\s*$", re.MULTILINE)
+
+
+def _extract_suggestions(text: str) -> tuple[str, list[dict[str, str]] | None]:
+    """从 LLM 纯文本中解析澄清选项，返回 (净化后的文本, suggestions items 或 None)。
+
+    约定格式：澄清问题文本 + 单独一行「可点击选项：」+ 每行一个选项（`1. 文案` / `1、文案`）。
+    命中解析失败（无合法编号行）时整体不生成 suggestions，保留原文本。
+    """
+    m = _SUGGESTION_HEADER.search(text)
+    if not m:
+        return text, None
+    items: list[dict[str, str]] = []
+    for line in text[m.end() :].splitlines():
+        hit = re.match(r"^\s*\d+[.、]\s*(.+)$", line)
+        if hit:
+            item = hit.group(1).strip()
+            if item:
+                items.append({"text": item, "message": item})
+    if not items:
+        return text, None
+    clean = text[: m.start()].rstrip()
+    return clean, items
+
+
+def _suggestions_block(items: list[dict[str, str]]) -> dict[str, Any]:
+    """生成 suggestions block（契约 2.7：items[{text, message}]）。"""
+    return {
+        "id": str(uuid.uuid4()),
+        "type": "suggestions",
+        "status": "completed",
+        "content": {"items": items},
+    }
 
 
 def _text_block(text: str, status: str = "running") -> dict[str, Any]:
@@ -440,15 +479,23 @@ class ChatService:
             "completion_tokens": usage.completion_tokens,
             "total_tokens": usage.total_tokens,
         }
+        raw_text = "".join(parts)
+        clean_text, suggestion_items = _extract_suggestions(raw_text)
         text_block["status"] = "completed"
-        text_block["content"]["text"] = "".join(parts)
+        text_block["content"]["text"] = clean_text
         metadata: dict[str, Any] = {"usage": usage_dict, "stop_reason": stop_reason}
         if tctx.tool_calls:
             metadata["tool_calls"] = tctx.tool_calls
         blocks = [text_block, *side_blocks]
+        if suggestion_items:
+            blocks.append(_suggestions_block(suggestion_items))
         await self._persist_message(
             session_id, "assistant", blocks,
             metadata=metadata, message_id=message_id,
         )
         yield _block_end(text_block)
+        if suggestion_items:
+            sug_block = blocks[-1]
+            yield _block_start(sug_block)
+            yield _block_end(sug_block)
         yield {"event": "done", "data": {"message_id": message_id, "usage": usage_dict}}
