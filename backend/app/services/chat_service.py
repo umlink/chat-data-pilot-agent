@@ -124,6 +124,26 @@ def _suggestions_block(items: list[dict[str, str]]) -> dict[str, Any]:
     }
 
 
+def _summarize_history(msgs: list[dict[str, str]], max_rows: int = 8) -> str:
+    """把超出上下文预算的早期轮次压缩为摘要（启发式，无 LLM 调用）。
+
+    每轮取「用户问题 → AI 结论首行」各一行；轮次过多时保留首尾代表行，
+    防止摘要本身挤占上下文预算。
+    """
+    lines: list[str] = []
+    for m in msgs:
+        first = m["content"].splitlines()[0].strip()[:80]
+        if not first:
+            continue
+        prefix = "用户曾问" if m["role"] == "user" else "AI 要点"
+        lines.append(f"{prefix}：{first}")
+    if not lines:
+        return ""
+    if len(lines) > max_rows:
+        lines = lines[: max_rows // 2] + ["…（中间轮次略）…"] + lines[-(max_rows // 2):]
+    return "更早对话的压缩摘要（已超出上下文预算，仅保留要点）：\n" + "\n".join(lines)
+
+
 # 从 SQL 中提取 FROM / JOIN 引用的表名（跨方言去修饰符；多数据源场景保守取字面名）
 _TABLE_RE = re.compile(r"\b(?:FROM|JOIN)\s+([A-Za-z_][\w.$`\"]*)", re.IGNORECASE)
 
@@ -441,15 +461,38 @@ class ChatService:
         user_id=None,
         datasource_id: str | None = None,
         attachments: list[str] | None = None,
+        client_msg_id: str | None = None,
     ) -> AsyncGenerator[dict[str, Any], None]:
         """产出 SSE 事件字典：{"event": ..., "data": ...}。
 
         流程：用户消息落库 → 组装上下文 → Agent 循环（≤8 轮）：
         每轮 LLM 决策（流式 text + 可选工具调用）；工具副作用生成 table/chart/confirmation block；
         request_confirmation 或纯文本输出 → 终止循环 → 消息落库 + done。
+        client_msg_id：前端乐观消息 id，用于断线重连幂等（同一 id 已落库则不再重复执行）。
         """
         # 1) 用户消息落库（前端已乐观渲染，无需回推事件）
-        await self._persist_message(session_id, "user", [_text_block(user_text, "completed")])
+        #    幂等：断线重连携带同一 client_msg_id 时，若该用户消息已落库 → 直接提示，避免重复执行/重复落库
+        if client_msg_id:
+            async with SessionFactory() as db:
+                dup = await db.scalar(
+                    select(Message.id)
+                    .where(
+                        Message.session_id == session_id,
+                        Message.role == "user",
+                        Message.metadata_["client_msg_id"].astext == client_msg_id,
+                    )
+                    .limit(1)
+                )
+            if dup:
+                yield {"event": "error", "data": {
+                    "code": "DUPLICATE_MESSAGE",
+                    "message": "该消息已在处理中或已完成，请刷新页面查看最新结果",
+                }}
+                return
+        await self._persist_message(
+            session_id, "user", [_text_block(user_text, "completed")],
+            metadata={"client_msg_id": client_msg_id} if client_msg_id else None,
+        )
         await self._maybe_update_title(session_id, user_text)
 
         # 2) assistant 消息骨架：text block 作为流式容器
@@ -488,18 +531,27 @@ class ChatService:
         if datasource_id:
             system += "\n本次请求指定了数据源，run_sql 时省略 datasource_id 即使用该数据源。"
         messages: list[dict[str, Any]] = [{"role": "system", "content": system}]
-        # 历史按 8K token 预算裁剪：从最近往前，超预算的早期消息截断/丢弃
+        # 历史按 8K token 预算裁剪：从最近往前，超预算的早期轮次截断/压缩为摘要（而非直接丢弃）
         budget = max(1, CONTEXT_TOKEN_BUDGET - _estimate_tokens(system))
         used = 0
-        for msg in history:
+        cut = 0
+        for i, msg in enumerate(history):
             cost = _estimate_tokens(msg["content"])
             if used + cost > budget:
                 room = budget - used
                 if room >= 64 and len(msg["content"]) > room * 2:
                     messages.append({"role": msg["role"], "content": msg["content"][: room * 2] + "…（上下文已截断）"})
+                cut = i + 1
                 break
             messages.append(msg)
             used += cost
+        else:
+            cut = len(history)
+        # 更早轮次压缩为摘要（插在主 system 之后、最新历史之前，保留背景要点）
+        if cut < len(history):
+            summary = _summarize_history(history[cut:])
+            if summary:
+                messages.insert(1, {"role": "system", "content": summary})
 
         max_rows = int((await self._config.get("system.query") or {}).get("max_query_rows", 1000))
         tctx = ToolCtx(
@@ -607,4 +659,9 @@ class ChatService:
             sug_block = blocks[-1]
             yield _block_start(sug_block)
             yield _block_end(sug_block)
-        yield {"event": "done", "data": {"message_id": message_id, "usage": usage_dict}}
+        yield {"event": "done", "data": {
+            "message_id": message_id,
+            "usage": usage_dict,
+            # 服务端最终文本（已剥离澄清/追问选项段），前端据此覆盖实时流式文本，保证实时与落库一致
+            "text": clean_text,
+        }}

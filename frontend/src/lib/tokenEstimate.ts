@@ -18,11 +18,13 @@ function estimateTextTokens(text: string): number {
 }
 
 export function estimateContextTokens(messages: Message[]): number {
+  // 服务端每条 assistant 消息的 usage.total_tokens 是该时刻完整上下文的累计值，
+  // 逐条累加会重复计数 prompt；取最新一条作为基线，其后无 usage 的消息按文本折算叠加
   let total = 0
   for (const m of messages) {
     const usage = m.metadata.usage as { total_tokens?: number } | undefined
     if (typeof usage?.total_tokens === 'number' && usage.total_tokens > 0) {
-      total += usage.total_tokens
+      total = usage.total_tokens
       continue
     }
     for (const b of m.blocks) {

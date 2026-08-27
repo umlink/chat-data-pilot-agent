@@ -202,6 +202,10 @@ export function useChat() {
           flushTokens()
           const realId = String(d.message_id ?? '')
           s.setMessageMetadata(sessionId, msgId, { usage: d.usage ?? {} })
+          // 服务端最终文本（已剥离澄清/追问选项段）覆盖实时流式文本，保证实时与落库一致
+          if (typeof d.text === 'string' && d.text) {
+            s.patchBlock(sessionId, msgId, textBlockId, { text: d.text })
+          }
           s.setBlockStatus(sessionId, msgId, textBlockId, 'completed')
           s.setSending(sessionId, false)
           s.clearAttachments()
@@ -219,41 +223,57 @@ export function useChat() {
     const ctrl = new AbortController()
     controllers.set(sessionId, ctrl)
 
-    try {
-      await streamSSE(
-        `${API_BASE}/chat/stream`,
-        {
-          session_id: sessionId,
-          message: text,
-          text_block_id: textBlockId,
-          ...(datasourceId ? { datasource_id: datasourceId } : {}),
-          ...(attachmentIds.length > 0 ? { attachments: attachmentIds } : {}),
-        },
-        {
-          onEvent: applyFrame,
-          onError: (err) => {
-            flushTokens()
-            const s = useChatStore.getState()
-            const blocks = s.messagesBySession[sessionId]?.find((m) => m.id === msgId)?.blocks
-            const current =
-              blocks?.find((b) => b.id === textBlockId)?.content.text ?? ''
-            s.patchBlock(sessionId, msgId, textBlockId, {
-              text: `${current}\n\n⚠️ 连接中断：${err.message}`,
-            })
-            s.setBlockStatus(sessionId, msgId, textBlockId, 'failed')
-            s.setSending(sessionId, false)
+    // 断线重连（幂等）：仅当连接建立后未收到任何业务事件时自动重连一次，
+    // 携带 client_msg_id 由后端幂等去重，避免重复落库/重复执行
+    let receivedAny = false
+    let lastError: Error | null = null
+    for (let attempt = 0; attempt < 2; attempt++) {
+      lastError = null
+      try {
+        await streamSSE(
+          `${API_BASE}/chat/stream`,
+          {
+            session_id: sessionId,
+            message: text,
+            text_block_id: textBlockId,
+            client_msg_id: userMsg.id,
+            ...(datasourceId ? { datasource_id: datasourceId } : {}),
+            ...(attachmentIds.length > 0 ? { attachments: attachmentIds } : {}),
           },
-        },
-        ctrl.signal,
-      )
-      flushTokens()
-      useChatStore.getState().setSending(sessionId, false)
-    } catch {
-      flushTokens()
-      useChatStore.getState().setSending(sessionId, false)
-    } finally {
-      if (controllers.get(sessionId) === ctrl) controllers.delete(sessionId)
+          {
+            onEvent: (frame) => {
+              receivedAny = true
+              applyFrame(frame)
+            },
+            onError: (err) => {
+              lastError = err
+            },
+          },
+          ctrl.signal,
+        )
+      } catch (err) {
+        lastError = err instanceof Error ? err : new Error(String(err))
+      }
+      if (!lastError) break // 正常完成（含服务端 error 事件，属业务结束）
+      if (receivedAny || attempt === 1) {
+        // 已收到过事件（服务端已开始处理）或重连仍失败 → 按连接中断处理
+        flushTokens()
+        const s = useChatStore.getState()
+        const blocks = s.messagesBySession[sessionId]?.find((m) => m.id === msgId)?.blocks
+        const current = blocks?.find((b) => b.id === textBlockId)?.content.text ?? ''
+        s.patchBlock(sessionId, msgId, textBlockId, {
+          text: `${current}\n\n⚠️ 连接中断：${lastError.message}`,
+        })
+        s.setBlockStatus(sessionId, msgId, textBlockId, 'failed')
+        break
+      }
+      // 零事件断线：等待后重连一次
+      receivedAny = false
+      await new Promise((r) => setTimeout(r, 600))
     }
+    flushTokens()
+    useChatStore.getState().setSending(sessionId, false)
+    if (controllers.get(sessionId) === ctrl) controllers.delete(sessionId)
   }, [])
 
   return { send }

@@ -39,6 +39,7 @@ class ChatStreamRequest(BaseModel):
     attachments: list[str] | None = None
     datasource_id: str | None = None
     action_block_id: str | None = None
+    client_msg_id: str | None = None  # 前端乐观消息 id（断线重连幂等，可选）
 
 
 class FeedbackRequest(BaseModel):
@@ -105,6 +106,7 @@ async def chat_stream(
             user_id=user.id,
             datasource_id=req.datasource_id,
             attachments=req.attachments,
+            client_msg_id=req.client_msg_id,
         ).__aiter__()
         try:
             while True:

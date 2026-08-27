@@ -260,7 +260,7 @@ data: <JSON 载荷>
 | `block_end` | `{ block_id, status }` | block 到达终态 |
 | `task_status` | `{ task_id, status, percent?, current_step? }` | 任务进度推送 |
 | `error` | `{ code, message }` | 会话级错误（整条消息失败） |
-| `done` | `{ message_id, usage }` | 消息完成；`usage: { prompt_tokens, completion_tokens, total_tokens }` |
+| `done` | `{ message_id, usage, text }` | 消息完成；`usage: { prompt_tokens, completion_tokens, total_tokens }`；`text` 为服务端最终文本（已剥离澄清/追问选项段），前端用于覆盖实时流式文本，保证实时与落库一致 |
 
 ### 3.3 block_update 语义
 
@@ -280,6 +280,7 @@ data: <JSON 载荷>
 
 - **乱序丢弃**：前端记录已处理的最大 `id`，收到更小的 id 直接丢弃（重连重放场景）。
 - **断线恢复**：SSE 断开后重连前，先调 `GET /api/sessions/{id}/messages` 全量对齐本地消息与 block 终态，再续订任务 SSE（`GET /api/tasks/{id}/stream`）。**不做事件级续传**，MVP 以终态对齐代替。
+- **断线幂等**：`POST /api/chat/stream` 请求可携带 `client_msg_id`（前端乐观消息 id）；同一 id 的用户消息已落库时服务端返回 `error(DUPLICATE_MESSAGE)` 且不再重复执行。前端仅在「零事件断线」（连接建立后未收到任何业务事件）时自动重连一次（携带同一 `client_msg_id`）。
 - **心跳**：服务端每 15 秒发送注释行 `: ping\n\n` 防止代理空闲断连。
 - **连接关闭**：`done` 或 `error` 事件后服务端主动关闭流；前端收到后结束本次请求。
 
@@ -413,7 +414,7 @@ data: <JSON 载荷>
 | 历史轮数 | 最近 10 轮完整保留；更早的 table/chart block 在进入 LLM 上下文时压缩为摘要（列名 + 行数 + 查询语句） |
 | schema 注入 | 主数据源全部表结构（表名、列名、类型、注释）+ 每表 3 行采样数据 |
 | 附件注入 | `att_{attachment_id}` 的列名/类型/行数/sheet 名，并声明「附件表位于独立引擎，跨源 JOIN 需用 run_python 合并」 |
-| 上下文预算 | schema + 历史总量控制在 8K token 内，超出优先压缩采样数据 |
+| 上下文预算 | schema + 历史总量控制在 8K token 内，超出优先压缩采样数据；仍超出的早期轮次压缩为一行摘要（用户问题 → AI 要点）插入主 system 之后，而非直接丢弃（启发式，无 LLM 调用） |
 | 澄清机制 | 问题缺少必要参数（时间范围、指标口径等）时，LLM 不调用工具，直接输出澄清文本 + suggestions block（提示词中明确要求） |
 
 ### 4.5 降级：JSON 模式
