@@ -11,6 +11,7 @@ import type {
   ErrorContent,
   InsightItem,
   ProgressContent,
+  SourcesContent,
   SuggestionItem,
   TableContent,
 } from '@/types/message'
@@ -19,6 +20,7 @@ import { AttachmentBlock } from './AttachmentBlock'
 import { CodeBlock } from './CodeBlock'
 import { ConfirmationBlock } from './ConfirmationBlock'
 import { MarkdownText } from './MarkdownText'
+import { SourcesBlock } from './SourcesBlock'
 import { TableBlock } from './TableBlock'
 
 // ChartBlock（recharts ~120KB gzip）仅在出现 chart block 时懒加载
@@ -198,6 +200,9 @@ export function BlockViewer({
           </div>
         )
       }
+
+      case 'sources':
+        return <SourcesBlock content={c as unknown as SourcesContent} />
 
       case 'progress': {
         const content = c as unknown as ProgressContent

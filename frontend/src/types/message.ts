@@ -22,6 +22,7 @@ export type BlockType =
   | 'progress'
   | 'error'
   | 'attachment'
+  | 'sources'
 
 export interface BlockAction {
   action: string
@@ -118,6 +119,17 @@ export interface SuggestionsContent {
   items: SuggestionItem[]
 }
 
+export interface SourceItem {
+  /** 展示名：『数据源：xx』/ 表名 / 『查询 N』 */
+  label: string
+  /** 有则渲染为可点击「查看查询 SQL」 */
+  sql?: string
+}
+
+export interface SourcesContent {
+  items: SourceItem[]
+}
+
 export interface ProgressStep {
   name: string
   status: 'pending' | 'running' | 'done' | 'failed'
@@ -167,6 +179,7 @@ export type BlockContent =
   | ConfirmationContent
   | InsightsContent
   | SuggestionsContent
+  | SourcesContent
   | ProgressContent
   | ErrorContent
   | AttachmentContent
