@@ -6,6 +6,11 @@ export interface DataSourceInfo {
   name: string
   type: string
   config: Record<string, unknown>
+  /** 连接状态（PRD 3.2.3）：手动测试与后台心跳写回 */
+  status?: 'unknown' | 'ok' | 'error'
+  last_checked_at?: string | null
+  last_error?: string | null
+  server_version?: string | null
   created_at?: string | null
   updated_at?: string | null
 }

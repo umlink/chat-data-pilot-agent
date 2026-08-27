@@ -67,11 +67,14 @@ export function DataSourcePage() {
   const testConnection = async (ds: DataSourceInfo) => {
     setTestMap((m) => ({ ...m, [ds.id]: 'loading' }))
     try {
-      // 按 id 测试：服务端解密库中密文配置（列表 config 是掩码，不能用于测试）
+      // 按 id 测试：服务端解密库中密文配置（列表 config 是掩码，不能用于测试）。
+      // 测试结果会写回数据源 status/last_checked_at，刷新列表以更新状态徽标。
       const r = await api.post<TestResult>(`/datasources/${ds.id}/test`)
       setTestMap((m) => ({ ...m, [ds.id]: r }))
+      void load()
     } catch (e) {
       setTestMap((m) => ({ ...m, [ds.id]: { ok: false, error: e instanceof Error ? e.message : '连接测试失败' } }))
+      void load()
     }
   }
 

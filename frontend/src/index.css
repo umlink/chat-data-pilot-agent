@@ -241,6 +241,9 @@ html, body, #root {
   .status-dot.running {
     @apply bg-info;
   }
+  .status-dot.failed {
+    @apply bg-error;
+  }
   .status-dot.queued {
     @apply bg-muted-foreground/70;
     animation: pulse-dot 1.4s ease-in-out infinite;
