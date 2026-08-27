@@ -1,6 +1,6 @@
 # ===== 环境与密钥（禁止入库）=====
-# .env
-# .env.*
+.env
+.env.*
 !.env.example
 !frontend/.env.development
 !frontend/.env.example
