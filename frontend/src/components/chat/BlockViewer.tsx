@@ -1,6 +1,8 @@
 import { lazy, Suspense, useState, type ReactNode } from 'react'
 import { Check, Copy } from 'lucide-react'
+import { api } from '@/lib/api'
 import { useChat } from '@/hooks/useChat'
+import { useChatStore } from '@/store/chatStore'
 import type {
   AttachmentContent,
   ChartContent,
@@ -121,6 +123,23 @@ export function BlockViewer({
 }) {
   const c = block.content
   const { send } = useChat()
+  const [cancelling, setCancelling] = useState(false)
+
+  /** 取消进行中的任务（PRD 补充「任务取消」）：POST /api/tasks/{id}/cancel + 本地乐观标记 */
+  const cancelTask = async (taskId: string) => {
+    if (!sessionId || !messageId || cancelling) return
+    setCancelling(true)
+    try {
+      await api.post(`/tasks/${taskId}/cancel`)
+      const st = useChatStore.getState()
+      st.patchBlock(sessionId, messageId, block.id, { cancelled: true, cancellable: false })
+      st.setBlockStatus(sessionId, messageId, block.id, 'cancelled')
+    } catch {
+      /* 取消失败：任务可能已完成，保持现状 */
+    } finally {
+      setCancelling(false)
+    }
+  }
 
   const renderBlock = (): ReactNode => {
     switch (block.type) {
@@ -182,18 +201,48 @@ export function BlockViewer({
 
       case 'progress': {
         const content = c as unknown as ProgressContent
+        const done = content.cancelled || content.failed
+        const showCancel =
+          !done && block.status === 'running' && content.cancellable && !!content.task_id
         return (
           <div>
             <div className="mb-1 flex justify-between text-xs text-muted-foreground">
-              <span>{content.current_step ?? '处理中…'}</span>
-              <span>{content.percent}%</span>
+              <span>
+                {content.cancelled ? '已取消' : content.failed ? '任务失败' : (content.current_step ?? '处理中…')}
+              </span>
+              <span>{done ? '' : `${content.percent}%`}</span>
             </div>
             <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
               <div
-                className="h-full rounded-full bg-primary transition-all"
+                className={`h-full rounded-full transition-all ${
+                  content.failed ? 'bg-error' : content.cancelled ? 'bg-muted' : 'bg-primary'
+                }`}
                 style={{ width: `${content.percent}%` }}
               />
             </div>
+            {(showCancel || done) && (
+              <div className="mt-2 flex items-center gap-2">
+                {showCancel && (
+                  <button
+                    onClick={() => void cancelTask(content.task_id)}
+                    disabled={cancelling}
+                    aria-label="取消任务"
+                    className="rounded-md border px-2.5 py-1 text-xs text-foreground hover:bg-accent disabled:cursor-wait disabled:opacity-40"
+                  >
+                    {cancelling ? '取消中…' : '取消'}
+                  </button>
+                )}
+                {done && onRetry && (
+                  <button
+                    onClick={onRetry}
+                    aria-label="重试任务"
+                    className="rounded-md border px-2.5 py-1 text-xs text-foreground hover:bg-accent"
+                  >
+                    重试
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         )
       }

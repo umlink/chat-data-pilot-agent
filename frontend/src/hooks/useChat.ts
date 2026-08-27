@@ -1,5 +1,6 @@
 import { useCallback } from 'react'
 import { API_BASE } from '@/lib/api'
+import { notify } from '@/lib/notify'
 import { streamSSE } from '@/lib/sseClient'
 import type { SSEFrame } from '@/lib/sseClient'
 import { useChatStore } from '@/store/chatStore'
@@ -12,6 +13,10 @@ import type { Block, BlockType, Message } from '@/types/message'
  * - 登出 → abort 全部（cancelAllStreams）。
  */
 const controllers = new Map<string, AbortController>()
+
+/** 长任务浏览器通知（PRD 5.6）：记录任务首次出现时间，终态且耗时超阈值才通知 */
+const taskStartedAt = new Map<string, number>()
+const LONG_TASK_MS = 10_000
 
 /** 登出/全局清理时取消所有进行中的 SSE 流 */
 export function cancelAllStreams(): void {
@@ -122,6 +127,11 @@ export function useChat() {
             },
             ...(d.actions ? { actions: d.actions as Block['actions'] } : {}),
           })
+          // 任务起点：progress block 创建时间 ≈ 任务开始时间（通知长任务用）
+          if (type === 'progress') {
+            const taskId = (d.content as Record<string, unknown> | undefined)?.task_id
+            if (taskId) taskStartedAt.set(String(taskId), Date.now())
+          }
           break
         }
         case 'block_update':
@@ -142,6 +152,36 @@ export function useChat() {
               percent: (d.percent as number) ?? progress.content.percent ?? 0,
               current_step: d.current_step,
             })
+            // 终态：取消/失败写入 content 标记（block_end 会覆写 status 为 completed，
+            // 不能依赖 block.status 判断取消态，PRD 补充「任务取消」）
+            const st = String(d.status ?? '')
+            if (st === 'cancelled') {
+              cur.patchBlock(sessionId, msgId, progress.id, { cancelled: true, cancellable: false })
+              cur.setBlockStatus(sessionId, msgId, progress.id, 'cancelled')
+            } else if (st === 'failed') {
+              cur.patchBlock(sessionId, msgId, progress.id, {
+                failed: true,
+                cancellable: false,
+                error: d.error ?? progress.content.error,
+              })
+              cur.setBlockStatus(sessionId, msgId, progress.id, 'failed')
+            }
+            // 长任务浏览器通知：耗时超阈值且已授权才提醒
+            const now = Date.now()
+            if (st === 'running' || st === 'pending') {
+              if (!taskStartedAt.has(String(d.task_id))) taskStartedAt.set(String(d.task_id), now)
+            } else if (st === 'success' || st === 'cancelled' || st === 'failed') {
+              const started = taskStartedAt.get(String(d.task_id))
+              taskStartedAt.delete(String(d.task_id))
+              if (started !== undefined && now - started >= LONG_TASK_MS) {
+                notify(
+                  st === 'success' ? '任务完成' : st === 'cancelled' ? '任务已取消' : '任务失败',
+                  st === 'failed'
+                    ? String(d.error ?? '') || '任务执行失败，请查看对话详情'
+                    : String(progress.content.current_step ?? '') || '后台任务已结束',
+                )
+              }
+            }
           }
           break
         }

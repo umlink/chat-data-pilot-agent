@@ -129,6 +129,10 @@ export interface ProgressContent {
   percent: number
   current_step?: string
   cancellable: boolean
+  /** 已取消/已失败标记（任务终态；block_end 会覆写 status，不能只依赖 block.status） */
+  cancelled?: boolean
+  failed?: boolean
+  error?: string
 }
 
 export interface ErrorContent {
