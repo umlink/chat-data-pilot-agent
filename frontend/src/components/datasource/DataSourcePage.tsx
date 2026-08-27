@@ -8,6 +8,7 @@ import { useDataSourceStore, type DataSourceInfo } from '@/store/dataSourceStore
 import { type TestResult } from './constants'
 import { DataSourceFormDialog } from './DataSourceFormDialog'
 import { DataSourcePreviewDialog } from './DataSourcePreviewDialog'
+import { DataSourceSchemaDialog } from './DataSourceSchemaDialog'
 import { DataSourceTable, type TestState } from './DataSourceTable'
 
 /** 数据源管理页：列表 + 新建/编辑/测试连接/预览/删除（backend/app/api/datasources.py）。 */
@@ -18,6 +19,7 @@ export function DataSourcePage() {
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<DataSourceInfo | null>(null)
   const [previewDs, setPreviewDs] = useState<DataSourceInfo | null>(null)
+  const [schemaDs, setSchemaDs] = useState<DataSourceInfo | null>(null)
   const [deleteDs, setDeleteDs] = useState<DataSourceInfo | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState('')
@@ -137,6 +139,7 @@ export function DataSourcePage() {
             testMap={testMap}
             onTest={(ds) => void testConnection(ds)}
             onPreview={setPreviewDs}
+            onSchema={setSchemaDs}
             onEdit={openEdit}
             onDelete={(ds) => {
               setDeleteDs(ds)
@@ -157,6 +160,7 @@ export function DataSourcePage() {
       />
 
       <DataSourcePreviewDialog ds={previewDs} onClose={() => setPreviewDs(null)} />
+      <DataSourceSchemaDialog ds={schemaDs} onClose={() => setSchemaDs(null)} />
 
       <Dialog
         open={deleteDs !== null}

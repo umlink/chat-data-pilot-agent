@@ -52,7 +52,9 @@ export function ChatArea() {
       setSessionId(null)
       return
     }
-    if (id === useChatStore.getState().sessionId) return
+    // 不做 `id === getState().sessionId` 幂等跳过：StrictMode 双跑 effect 时
+    // 首次运行的请求会被 cleanup 丢弃，若此处提前 return 则不重新拉取，
+    // 历史消息永不加载。与下方 /datasources 拉取一致，dev 下重复请求可接受。
     setSessionId(id)
     // D1：切换会话不中断后台流。若目标会话正在流式（assistant 消息尚未落库），
     // 跳过 DB 快照回填、信任本地流式状态，避免覆盖导致进行中的回答丢失。
@@ -151,8 +153,10 @@ export function ChatArea() {
           </div>
         ) : (
           <MessageList
+            scrollRef={scrollRef}
             messages={messages}
             sending={sending}
+            onSizeChange={follow}
             onRetry={() => {
               // 重试 = 重发最近一条用户消息（error block retryable 时）
               for (let i = messages.length - 1; i >= 0; i--) {

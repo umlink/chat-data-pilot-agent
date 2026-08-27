@@ -140,6 +140,37 @@ export async function mockRequest(
   if (method === 'GET' && previewMatch) {
     return { datasource_id: previewMatch[1], ...copy(store.preview) }
   }
+  const schemaMatch = path.match(/^\/datasources\/([^/]+)\/schema$/)
+  if (method === 'GET' && schemaMatch) {
+    return {
+      datasource_id: schemaMatch[1],
+      datasource_type: 'postgresql',
+      tables: [
+        {
+          schema: 'public',
+          name: 'orders',
+          comment: '订单表',
+          columns: [
+            { name: 'id', data_type: 'bigint', comment: null, is_nullable: false },
+            { name: 'customer', data_type: 'text', comment: '客户', is_nullable: true },
+            { name: 'amount', data_type: 'numeric', comment: '金额', is_nullable: true },
+            { name: 'created_at', data_type: 'timestamp', comment: null, is_nullable: true },
+          ],
+          sample: [{ id: 1, customer: '张三', amount: 12.5, created_at: '2026-08-01' }],
+        },
+        {
+          schema: 'public',
+          name: 'products',
+          comment: null,
+          columns: [
+            { name: 'sku', data_type: 'text', comment: null, is_nullable: false },
+            { name: 'price', data_type: 'numeric', comment: null, is_nullable: true },
+          ],
+          sample: [{ sku: 'A-1', price: 9.9 }],
+        },
+      ],
+    }
+  }
 
   // ---------- 配置（与 backend/app/api/config.py 契约一致：扁平 key → valueDict） ----------
   if (method === 'GET' && path === '/config') {

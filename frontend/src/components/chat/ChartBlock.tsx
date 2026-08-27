@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react'
-import { Settings2 } from 'lucide-react'
+import { Maximize2, Settings2 } from 'lucide-react'
 import {
   Bar,
   BarChart,
@@ -79,14 +79,22 @@ function resolveColors(series: ChartSeries[], colors: string[]): string[] {
 /** 柱状主色渐变橙 400→600（docs/UI设计规范.md 3.7） */
 const BAR_GRADIENT_ID = 'dpChartBarGrad'
 
-function BarPanel({ content, colors }: { content: ChartContent; colors: string[] }) {
+function BarPanel({
+  content,
+  colors,
+  chartClass = 'aspect-auto h-56 w-full',
+}: {
+  content: ChartContent
+  colors: string[]
+  chartClass?: string
+}) {
   const { series, x_label, y_label } = content
   const rows = toRows(series)
   const single = series.length === 1
   const gradFrom = colors[0] ?? 'var(--chart-2)'
   const gradTo = colors[Math.min(1, colors.length - 1)] ?? 'var(--chart-3)'
   return (
-    <ChartContainer config={buildConfig(series)} className="aspect-auto h-56 w-full">
+    <ChartContainer config={buildConfig(series)} className={chartClass}>
       <BarChart data={rows} accessibilityLayer margin={{ top: 4, right: 8, bottom: 0, left: -8 }}>
         <defs>
           <linearGradient id={BAR_GRADIENT_ID} x1="0" y1="0" x2="0" y2="1">
@@ -124,10 +132,18 @@ function BarPanel({ content, colors }: { content: ChartContent; colors: string[]
   )
 }
 
-function LinePanel({ content, colors }: { content: ChartContent; colors: string[] }) {
+function LinePanel({
+  content,
+  colors,
+  chartClass = 'aspect-auto h-56 w-full',
+}: {
+  content: ChartContent
+  colors: string[]
+  chartClass?: string
+}) {
   const { series, x_label, y_label } = content
   return (
-    <ChartContainer config={buildConfig(series)} className="aspect-auto h-56 w-full">
+    <ChartContainer config={buildConfig(series)} className={chartClass}>
       <LineChart data={toRows(series)} accessibilityLayer margin={{ top: 4, right: 8, bottom: 0, left: -8 }}>
         <CartesianGrid vertical={false} />
         <XAxis
@@ -163,14 +179,22 @@ function LinePanel({ content, colors }: { content: ChartContent; colors: string[
   )
 }
 
-function PiePanel({ content, colors }: { content: ChartContent; colors: string[] }) {
+function PiePanel({
+  content,
+  colors,
+  chartClass = 'aspect-auto h-56 w-full',
+}: {
+  content: ChartContent
+  colors: string[]
+  chartClass?: string
+}) {
   const s = content.series[0]
   if (!s) {
     return <div className="py-10 text-center text-[13px] text-muted-foreground">暂无图表数据</div>
   }
   const data = s.x.map((cat, i) => ({ x: cat, value: s.y[i] ?? 0 }))
   return (
-    <ChartContainer config={buildConfig([s])} className="aspect-auto h-56 w-full">
+    <ChartContainer config={buildConfig([s])} className={chartClass}>
       <PieChart accessibilityLayer>
         <ChartTooltip content={<ChartTooltipContent indicator="dot" />} />
         <Pie data={data} dataKey="value" nameKey="x" innerRadius={48} outerRadius={76} paddingAngle={2} strokeWidth={0}>
@@ -184,10 +208,18 @@ function PiePanel({ content, colors }: { content: ChartContent; colors: string[]
   )
 }
 
-function ScatterPanel({ content, colors }: { content: ChartContent; colors: string[] }) {
+function ScatterPanel({
+  content,
+  colors,
+  chartClass = 'aspect-auto h-56 w-full',
+}: {
+  content: ChartContent
+  colors: string[]
+  chartClass?: string
+}) {
   const { series, x_label } = content
   return (
-    <ChartContainer config={buildConfig(series)} className="aspect-auto h-56 w-full">
+    <ChartContainer config={buildConfig(series)} className={chartClass}>
       <ScatterChart accessibilityLayer margin={{ top: 4, right: 8, bottom: 0, left: -8 }}>
         <CartesianGrid vertical={false} />
         <XAxis
@@ -309,6 +341,118 @@ function HeatmapPanel({ content }: { content: ChartContent }) {
         </span>
       </div>
     </div>
+  )
+}
+
+/** 按 chart_type 渲染图表面板（卡片与全屏共用；chartClass 控制高度/宽度）。 */
+function ChartPanel({
+  content,
+  colors,
+  chartClass,
+}: {
+  content: ChartContent
+  colors: string[]
+  chartClass?: string
+}) {
+  switch (content.chart_type) {
+    case 'bar':
+      return <BarPanel content={content} colors={colors} chartClass={chartClass} />
+    case 'line':
+      return <LinePanel content={content} colors={colors} chartClass={chartClass} />
+    case 'pie':
+      return <PiePanel content={content} colors={colors} chartClass={chartClass} />
+    case 'scatter':
+      return <ScatterPanel content={content} colors={colors} chartClass={chartClass} />
+    case 'heatmap':
+      return <HeatmapPanel content={content} />
+    default:
+      return <div className="py-10 text-center text-[13px] text-muted-foreground">暂不支持该图表类型</div>
+  }
+}
+
+/** 图表全屏查看 Dialog：大尺寸渲染 + 导出/设置/查看 SQL（导出基于大图自身 ref）。 */
+function ChartFullscreenDialog({
+  content,
+  colors,
+  open,
+  onOpenChange,
+  onOpenSettings,
+  onOpenSql,
+  showSql,
+}: {
+  content: ChartContent
+  colors: string[]
+  open: boolean
+  onOpenChange: (v: boolean) => void
+  onOpenSettings: () => void
+  onOpenSql: () => void
+  showSql: boolean
+}) {
+  const chartRef = useRef<HTMLDivElement>(null)
+  const title = content.title || '图表'
+  const { downloadSvg, downloadPng, downloadPdf } = useChartExport(chartRef, title)
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        className="flex flex-col gap-0 p-0"
+        style={{ width: '92vw', height: '92vh', maxWidth: '92vw' }}
+      >
+        <DialogHeader className="flex shrink-0 flex-row items-center justify-between gap-2 border-b px-5 py-3">
+          <DialogTitle className="truncate text-sm">{title}</DialogTitle>
+          <div className="flex shrink-0 items-center gap-1">
+            <button
+              onClick={onOpenSettings}
+              className="rounded bg-background/80 px-1.5 py-1 text-muted-foreground hover:text-foreground"
+              title="图表设置"
+              aria-label="图表设置"
+            >
+              <Settings2 className="size-3.5" />
+            </button>
+            {showSql && (
+              <button
+                onClick={onOpenSql}
+                className="rounded bg-background/80 px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground"
+                title="查看查询 SQL"
+                aria-label="查看查询 SQL"
+              >
+                SQL
+              </button>
+            )}
+            <button
+              onClick={() => void downloadPng()}
+              className="rounded bg-background/80 px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground"
+              title="下载 PNG"
+              aria-label="导出 PNG"
+            >
+              PNG
+            </button>
+            <button
+              onClick={downloadSvg}
+              className="rounded bg-background/80 px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground"
+              title="下载 SVG"
+              aria-label="导出 SVG"
+            >
+              SVG
+            </button>
+            <button
+              onClick={() => void downloadPdf()}
+              className="rounded bg-background/80 px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground"
+              title="下载 PDF"
+              aria-label="导出 PDF"
+            >
+              PDF
+            </button>
+          </div>
+        </DialogHeader>
+        <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-auto p-4">
+          <div ref={chartRef} className="flex h-full w-full items-center justify-center">
+            <div className="h-full max-h-full w-full">
+              <ChartPanel content={content} colors={colors} chartClass="h-full w-full" />
+            </div>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -523,17 +667,27 @@ function ChartToolbar({
   title,
   onOpenSettings,
   onOpenSql,
+  onOpenFullscreen,
   showSql,
 }: {
   chartRef: React.RefObject<HTMLDivElement | null>
   title: string
   onOpenSettings: () => void
   onOpenSql: () => void
+  onOpenFullscreen: () => void
   showSql: boolean
 }) {
   const { downloadSvg, downloadPng, downloadPdf } = useChartExport(chartRef, title)
   return (
     <div className="absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+      <button
+        onClick={onOpenFullscreen}
+        className="rounded bg-background/80 px-1.5 py-1 text-muted-foreground hover:text-foreground"
+        title="全屏查看"
+        aria-label="全屏查看"
+      >
+        <Maximize2 className="size-3.5" />
+      </button>
       <button
         onClick={onOpenSettings}
         className="rounded bg-background/80 px-1.5 py-1 text-muted-foreground hover:text-foreground"
@@ -589,6 +743,7 @@ export function ChartBlock({ content }: Props) {
   const chartRef = useRef<HTMLDivElement>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [sqlOpen, setSqlOpen] = useState(false)
+  const [fullscreenOpen, setFullscreenOpen] = useState(false)
   const [settings, setSettings] = useState<ChartSettings>(DEFAULT_SETTINGS)
   const effective: ChartContent = useMemo(
     () => ({
@@ -623,18 +778,10 @@ export function ChartBlock({ content }: Props) {
           title={title}
           onOpenSettings={() => setSettingsOpen(true)}
           onOpenSql={() => setSqlOpen(true)}
+          onOpenFullscreen={() => setFullscreenOpen(true)}
           showSql={!!content.query}
         />
-        {content.chart_type === 'heatmap' ? (
-          <HeatmapPanel content={effective} />
-        ) : (
-          <>
-            {content.chart_type === 'bar' && <BarPanel content={effective} colors={colors} />}
-            {content.chart_type === 'line' && <LinePanel content={effective} colors={colors} />}
-            {content.chart_type === 'pie' && <PiePanel content={effective} colors={colors} />}
-            {content.chart_type === 'scatter' && <ScatterPanel content={effective} colors={colors} />}
-          </>
-        )}
+        <ChartPanel content={effective} colors={colors} />
       </div>
       <ChartSettingsDialog
         content={content}
@@ -649,6 +796,15 @@ export function ChartBlock({ content }: Props) {
       {content.query ? (
         <SqlQueryDialog sql={content.query} open={sqlOpen} onOpenChange={setSqlOpen} />
       ) : null}
+      <ChartFullscreenDialog
+        content={effective}
+        colors={colors}
+        open={fullscreenOpen}
+        onOpenChange={setFullscreenOpen}
+        onOpenSettings={() => setSettingsOpen(true)}
+        onOpenSql={() => setSqlOpen(true)}
+        showSql={!!content.query}
+      />
     </div>
   )
 }

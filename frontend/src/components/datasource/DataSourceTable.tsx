@@ -9,6 +9,7 @@ interface Props {
   testMap: Record<string, TestState>
   onTest: (ds: DataSourceInfo) => void
   onPreview: (ds: DataSourceInfo) => void
+  onSchema: (ds: DataSourceInfo) => void
   onEdit: (ds: DataSourceInfo) => void
   onDelete: (ds: DataSourceInfo) => void
 }
@@ -21,8 +22,8 @@ function formatTime(value?: string | null): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
 }
 
-/** 数据源列表表格：名称 / 类型 badge / 更新时间 / 操作（测试、预览、编辑、删除）。 */
-export function DataSourceTable({ list, testMap, onTest, onPreview, onEdit, onDelete }: Props) {
+/** 数据源列表表格：名称 / 类型 badge / 更新时间 / 操作（测试、预览、Schema、编辑、删除）。 */
+export function DataSourceTable({ list, testMap, onTest, onPreview, onSchema, onEdit, onDelete }: Props) {
   return (
     <div className="overflow-hidden rounded-lg border bg-card">
       <table className="w-full text-xs">
@@ -67,6 +68,9 @@ export function DataSourceTable({ list, testMap, onTest, onPreview, onEdit, onDe
                     </Button>
                     <Button variant="outline" size="sm" onClick={() => onPreview(ds)}>
                       预览
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => onSchema(ds)}>
+                      Schema
                     </Button>
                     <Button variant="ghost" size="sm" onClick={() => onEdit(ds)}>
                       编辑
