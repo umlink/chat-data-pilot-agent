@@ -281,6 +281,7 @@ data: <JSON 载荷>
 - **乱序丢弃**：前端记录已处理的最大 `id`，收到更小的 id 直接丢弃（重连重放场景）。
 - **断线恢复**：SSE 断开后重连前，先调 `GET /api/sessions/{id}/messages` 全量对齐本地消息与 block 终态，再续订任务 SSE（`GET /api/tasks/{id}/stream`）。**不做事件级续传**，MVP 以终态对齐代替。
 - **断线幂等**：`POST /api/chat/stream` 请求可携带 `client_msg_id`（前端乐观消息 id）；同一 id 的用户消息已落库时服务端返回 `error(DUPLICATE_MESSAGE)` 且不再重复执行。前端仅在「零事件断线」（连接建立后未收到任何业务事件）时自动重连一次（携带同一 `client_msg_id`）。
+- **text 块复用**：`POST /api/chat/stream` 请求可携带 `text_block_id`（前端乐观预置的 text 块 id，可选）；服务端据此把该消息的 `block_start(block_id=text_block_id)` / `token(block_id=text_block_id)` / `block_end(block_id=text_block_id)` 统一下发到同一 id，前端就地更新乐观块，避免同一条消息出现两个 text block 重复渲染。未携带时服务端自建 id。
 - **心跳**：服务端每 15 秒发送注释行 `: ping\n\n` 防止代理空闲断连。
 - **连接关闭**：`done` 或 `error` 事件后服务端主动关闭流；前端收到后结束本次请求。
 

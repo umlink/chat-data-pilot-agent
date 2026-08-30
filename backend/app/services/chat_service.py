@@ -481,6 +481,7 @@ class ChatService:
         datasource_id: str | None = None,
         attachments: list[str] | None = None,
         client_msg_id: str | None = None,
+        text_block_id: str | None = None,
     ) -> AsyncGenerator[dict[str, Any], None]:
         """产出 SSE 事件字典：{"event": ..., "data": ...}。
 
@@ -488,6 +489,8 @@ class ChatService:
         每轮 LLM 决策（流式 text + 可选工具调用）；工具副作用生成 table/chart/confirmation block；
         request_confirmation 或纯文本输出 → 终止循环 → 消息落库 + done。
         client_msg_id：前端乐观消息 id，用于断线重连幂等（同一 id 已落库则不再重复执行）。
+        text_block_id：前端乐观预置的 text 块 id（可选）；block_start/token/block_end 统一复用该 id，
+        前端据此就地更新乐观块，避免同一条消息出现两个 text block 重复渲染。
         """
         # 1) 用户消息落库（前端已乐观渲染，无需回推事件）
         #    幂等：断线重连携带同一 client_msg_id 时，若该用户消息已落库 → 直接提示，避免重复执行/重复落库
@@ -515,9 +518,12 @@ class ChatService:
         await self._maybe_update_title(session_id, user_text)
 
         # 2) assistant 消息骨架：text block 作为流式容器
+        #    text_block_id：前端乐观预置的 text 块 id（可选）。同一 id 下发 block_start/token/block_end，
+        #    前端据此就地更新乐观块，避免同一条消息出现两个 text block 重复渲染。
         message_id = str(uuid.uuid4())
         text_block = _text_block("")
-        text_block_id = text_block["id"]
+        text_block_id = text_block_id or text_block["id"]
+        text_block["id"] = text_block_id
         yield _block_start(text_block)
 
         # 3) 组装上下文（契约 4.4：注入数据源 schema，schema + 历史总量 ≤ 8K token）

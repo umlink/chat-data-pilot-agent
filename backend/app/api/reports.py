@@ -225,6 +225,7 @@ async def list_report_runs(
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
     limit: int = Query(20, ge=1, le=100, description="返回条数上限"),
+    offset: int = Query(0, ge=0, description="跳过条数（分页）"),
 ):
     await _get_owned_report(db, user, report_id)
     try:
@@ -236,6 +237,7 @@ async def list_report_runs(
             select(ReportRun)
             .where(ReportRun.report_id == rid)
             .order_by(ReportRun.started_at.desc())
+            .offset(offset)
             .limit(limit)
         )
     ).all()

@@ -40,6 +40,7 @@ class ChatStreamRequest(BaseModel):
     datasource_id: str | None = None
     action_block_id: str | None = None
     client_msg_id: str | None = None  # 前端乐观消息 id（断线重连幂等，可选）
+    text_block_id: str | None = None  # 前端乐观预置的 text 块 id（流式容器复用，可选）
 
 
 class FeedbackRequest(BaseModel):
@@ -107,6 +108,7 @@ async def chat_stream(
             datasource_id=req.datasource_id,
             attachments=req.attachments,
             client_msg_id=req.client_msg_id,
+            text_block_id=req.text_block_id,
         ).__aiter__()
         nxt: asyncio.Future | None = None
         try:

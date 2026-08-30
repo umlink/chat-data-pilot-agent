@@ -199,6 +199,7 @@ async def list_notification_logs(
     db: Annotated[AsyncSession, Depends(get_db)],
     channel_id: str | None = Query(None, description="按渠道过滤（可选）"),
     limit: int = Query(20, ge=1, le=100, description="返回条数上限"),
+    offset: int = Query(0, ge=0, description="跳过的记录数（分页偏移）"),
 ):
     query = select(NotificationLog).where(NotificationLog.user_id == user.id)
     if channel_id:
@@ -210,7 +211,11 @@ async def list_notification_logs(
         await _get_owned_channel(db, user, channel_id)
         query = query.where(NotificationLog.channel_id == cid)
     logs = (
-        await db.scalars(query.order_by(NotificationLog.created_at.desc()).limit(limit))
+        await db.scalars(
+            query.order_by(NotificationLog.created_at.desc())
+            .offset(offset)
+            .limit(limit)
+        )
     ).all()
     return ApiResponse(data=[NotificationLogOut.model_validate(l) for l in logs])
 
