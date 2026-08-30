@@ -42,7 +42,7 @@ class Settings(BaseSettings):
     ENCRYPTION_KEY: str = ""  # Fernet 密钥；未设置时自动生成并持久化到 data/ 下
     ENABLE_AUTH: bool = True
     APP_DATA_DIR: str = "./data"
-    AUTO_CREATE_TABLES: bool = True  # 开发期自动建表；迁移切换为 Alembic
+    AUTO_CREATE_TABLES: bool = True  # 本地开发便捷建表；正式/生产必须设 false 走 Alembic（alembic upgrade head）
     CORS_ORIGINS: list[str] = [
         "http://localhost:5173",
         "http://localhost:4173",

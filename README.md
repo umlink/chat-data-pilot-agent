@@ -81,12 +81,15 @@ docker compose -f docker-compose.infra.yml up -d
 cd backend
 python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
+# 首次/升级库：表结构由 Alembic 迁移管理（AUTO_CREATE_TABLES=false）
+./venv/bin/alembic upgrade head
 uvicorn app.main:app --reload --port 8010
 ```
 
-- 首次启动自动建表并初始化：默认管理员 `admin / Admin@12345`、默认系统配置、MinIO bucket
+- 首次启动自动初始化：默认管理员 `admin / Admin@12345`、默认系统配置、MinIO bucket（建表走 `alembic upgrade head`）
 - 接口文档：<http://localhost:8010/docs>
-- 生产环境请改用 Alembic 迁移，并显式设置 `SECRET_KEY` 与 `ENCRYPTION_KEY`
+- schema 变更流程：改 `app/models/` → `./venv/bin/alembic revision --autogenerate -m "..."` → 人工核对 → `./venv/bin/alembic upgrade head`；漂移校验 `./venv/bin/alembic check`
+- 生产环境务必显式设置 `SECRET_KEY` 与 `ENCRYPTION_KEY`
 
 ### 3. 启动前端
 

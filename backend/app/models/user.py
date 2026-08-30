@@ -52,7 +52,9 @@ class Session(Base):
     )
     title: Mapped[str] = mapped_column(String(255), nullable=False, default="新会话")
     # 上下文压缩（契约 技术方案 4.8）：后台增量压缩的结构化摘要 + 水位线
-    context_summary: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    context_summary: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
+    )
     summary_upto: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     summary_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     summary_model: Mapped[str | None] = mapped_column(String(100), nullable=True)

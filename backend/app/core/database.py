@@ -22,52 +22,11 @@ async def get_db():
 
 
 async def init_db() -> None:
-    """开发期自动建表（幂等）。生产迁移由 Alembic 负责。"""
+    """开发期便捷建表（幂等）。正式/生产环境一律走 Alembic（alembic upgrade head）。"""
     from app import models  # noqa: F401 触发模型注册
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        # create_all 只建新表，不改已有表：对存量表补充新列（ADD COLUMN IF NOT EXISTS 幂等，
-        # 不丢数据）。正式迁移切到 Alembic 后此清单应随迁移文件清空。
-        await conn.execute(
-            text(
-                "ALTER TABLE datasources ADD COLUMN IF NOT EXISTS status VARCHAR(20) "
-                "NOT NULL DEFAULT 'unknown'"
-            )
-        )
-        await conn.execute(
-            text("ALTER TABLE datasources ADD COLUMN IF NOT EXISTS last_checked_at TIMESTAMPTZ")
-        )
-        await conn.execute(
-            text("ALTER TABLE datasources ADD COLUMN IF NOT EXISTS last_error VARCHAR(500)")
-        )
-        await conn.execute(
-            text("ALTER TABLE datasources ADD COLUMN IF NOT EXISTS server_version VARCHAR(50)")
-        )
-        await conn.execute(
-            text("ALTER TABLE datasources ADD COLUMN IF NOT EXISTS quick_prompts JSONB "
-                 "NOT NULL DEFAULT '[]'")
-        )
-        # 上下文压缩（契约 技术方案 4.8）：sessions 摘要 + 水位线，messages token 数
-        await conn.execute(
-            text("ALTER TABLE sessions ADD COLUMN IF NOT EXISTS context_summary JSONB "
-                 "NOT NULL DEFAULT '{}'")
-        )
-        await conn.execute(
-            text("ALTER TABLE sessions ADD COLUMN IF NOT EXISTS summary_upto UUID")
-        )
-        await conn.execute(
-            text("ALTER TABLE sessions ADD COLUMN IF NOT EXISTS summary_tokens INT")
-        )
-        await conn.execute(
-            text("ALTER TABLE sessions ADD COLUMN IF NOT EXISTS summary_model VARCHAR(100)")
-        )
-        await conn.execute(
-            text("ALTER TABLE sessions ADD COLUMN IF NOT EXISTS summary_at TIMESTAMPTZ")
-        )
-        await conn.execute(
-            text("ALTER TABLE messages ADD COLUMN IF NOT EXISTS tokens INT")
-        )
 
 
 async def close_db() -> None:
