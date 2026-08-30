@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { FileText, Loader2, Paperclip, Send } from 'lucide-react'
-import { useAttachments } from '@/hooks/useAttachments'
+import { useAttachments } from './useAttachments'
 import { useChatStore } from '@/store/chatStore'
 import { useDataSourceStore } from '@/store/dataSourceStore'
 import type { Template } from '@/types/template'

@@ -116,7 +116,7 @@ function SavedChartCard({
 }
 
 /** 图表看板（分析结果沉淀）：对话中收藏的 chart block 快照，网格布局展示。 */
-export function SavedChartsPage() {
+export function BoardPage() {
   const [list, setList] = useState<SavedChartInfo[] | null>(null);
   const [loadError, setLoadError] = useState("");
   const [deleteChart, setDeleteChart] = useState<SavedChartInfo | null>(null);

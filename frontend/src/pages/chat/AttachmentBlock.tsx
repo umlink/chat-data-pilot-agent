@@ -7,7 +7,7 @@ import {
   replaceOne,
   updateAttachmentBlockState,
   useAttachmentPolling,
-} from '@/hooks/useAttachments'
+} from './useAttachments'
 import { useChatStore } from '@/store/chatStore'
 import type { AttachmentContent } from '@/types/message'
 

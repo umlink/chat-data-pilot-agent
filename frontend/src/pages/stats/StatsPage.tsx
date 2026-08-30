@@ -62,7 +62,7 @@ function formatTokens(n: number): string {
 }
 
 /** Token 用量统计页：汇总卡 + 按日消耗曲线（area）+ 按模型分布表。 */
-export function TokenStatsPage() {
+export function StatsPage() {
   const [days, setDays] = useState(30)
   const [reloadKey, setReloadKey] = useState(0)
   const [data, setData] = useState<TokenStats | null>(null)

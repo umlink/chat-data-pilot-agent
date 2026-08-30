@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react'
 import { Loader2, X } from 'lucide-react'
-import { removeAttachmentRemote, useAttachmentPolling } from '@/hooks/useAttachments'
+import { removeAttachmentRemote, useAttachmentPolling } from './useAttachments'
 import { useChatStore } from '@/store/chatStore'
 import type { AttachmentContent } from '@/types/message'
 import { AttachmentStatusView } from './AttachmentBlock'

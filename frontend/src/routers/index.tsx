@@ -1,6 +1,6 @@
 import { Suspense, lazy } from 'react'
 import { Navigate, createBrowserRouter } from 'react-router-dom'
-import { ChatArea } from '@/pages/session/ChatArea'
+import { ChatArea } from '@/pages/chat/ChatArea'
 import { DataSourcePage } from '@/pages/datasources/DataSourcePage'
 import { LogsPage } from '@/pages/logs/LogsPage'
 import { TemplatesPage } from '@/pages/templates/TemplatesPage'
@@ -9,8 +9,8 @@ import { GuestOnly, RequireAuth } from '@/routers/guards'
 
 // 重页面（图表/表格/表单等较重组件）路由级懒加载
 const ConfigPage = lazy(() => import('@/pages/config/ConfigPage').then((m) => ({ default: m.ConfigPage })))
-const SavedChartsPage = lazy(() =>
-  import('@/pages/board/SavedChartsPage').then((m) => ({ default: m.SavedChartsPage })),
+const BoardPage = lazy(() =>
+  import('@/pages/board/BoardPage').then((m) => ({ default: m.BoardPage })),
 )
 const ReportsPage = lazy(() => import('@/pages/reports/ReportsPage').then((m) => ({ default: m.ReportsPage })))
 const AutomationPage = lazy(() =>
@@ -21,8 +21,8 @@ const NotificationChannelsPage = lazy(() =>
     default: m.NotificationChannelsPage,
   })),
 )
-const TokenStatsPage = lazy(() =>
-  import('@/pages/stats/TokenStatsPage').then((m) => ({ default: m.TokenStatsPage })),
+const StatsPage = lazy(() =>
+  import('@/pages/stats/StatsPage').then((m) => ({ default: m.StatsPage })),
 )
 
 /**
@@ -57,7 +57,7 @@ export const router = createBrowserRouter([
         path: 'board',
         element: (
           <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">加载中…</div>}>
-            <SavedChartsPage />
+            <BoardPage />
           </Suspense>
         ),
       },
@@ -89,7 +89,7 @@ export const router = createBrowserRouter([
         path: 'stats',
         element: (
           <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">加载中…</div>}>
-            <TokenStatsPage />
+            <StatsPage />
           </Suspense>
         ),
       },

@@ -106,7 +106,7 @@ export function AutomationParseDialog({
   }
 
   /** 数据源变更 → 清空解析结果，必须重新解析（方案 §2.8：改源须重解析，防 SQL 与目标 schema 错配） */
-  const changeDatasource = (v: string) => {
+  const changeDatasource = (v: string | null) => {
     setDatasourceId(String(v ?? ''))
     setDraft(null)
     setParseError('')

@@ -97,8 +97,8 @@ export function ChannelFormDialog({ open, editing, onOpenChange, onSaved }: Prop
     }
   }, [open, editing])
 
-  const switchProvider = (v: string) => {
-    setProvider(v as NotificationProvider)
+  const switchProvider = (v: string | null) => {
+    setProvider((v ?? 'email') as NotificationProvider)
     setConfig({})
   }
 
