@@ -31,6 +31,7 @@ function EditorFallback({ height }: { height: number }) {
     <div
       className="flex items-center justify-center text-muted-foreground"
       style={{ height }}
+      role="status"
       aria-label="代码编辑器加载中"
     >
       <Loader2 size={14} className="animate-spin" />

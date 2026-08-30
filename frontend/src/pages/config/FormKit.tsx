@@ -26,12 +26,28 @@ export function ConfigCard({
   )
 }
 
-/** 单行字段：左侧 13px label（+hint），右侧控件 */
-export function FieldRow({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
+/** 单行字段：左侧 13px label（+hint），右侧控件；htmlFor 可选，传入时 label 可点击聚焦关联控件 */
+export function FieldRow({
+  label,
+  hint,
+  htmlFor,
+  children,
+}: {
+  label: string
+  hint?: string
+  htmlFor?: string
+  children: ReactNode
+}) {
   return (
     <div className="flex items-center gap-3">
       <div className="w-28 shrink-0">
-        <div className="text-[13px] text-foreground">{label}</div>
+        {htmlFor ? (
+          <label htmlFor={htmlFor} className="text-[13px] text-foreground">
+            {label}
+          </label>
+        ) : (
+          <div className="text-[13px] text-foreground">{label}</div>
+        )}
         {hint && <div className="text-[11px] text-muted-foreground">{hint}</div>}
       </div>
       <div className="min-w-0 flex-1">{children}</div>

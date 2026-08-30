@@ -387,7 +387,7 @@ export function ReportFormDialog({ open, editing, datasources, onOpenChange, onS
                           patch({ measures })
                         }}
                       >
-                        <SelectTrigger className="w-[104px] shrink-0">
+                        <SelectTrigger className="w-[104px] shrink-0" aria-label={`指标 ${i + 1} 聚合方式`}>
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>

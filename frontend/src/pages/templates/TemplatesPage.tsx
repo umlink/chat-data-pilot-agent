@@ -12,27 +12,45 @@ import type { Template, TemplateForm } from '@/types/template'
 /** 模板管理页：可复用分析配置（数据源 + SQL + 图表），见 docs/技术方案设计.md 3.8 */
 export function TemplatesPage() {
   const [templates, setTemplates] = useState<Template[] | null>(null)
+  const [loadError, setLoadError] = useState('')
   const [keyword, setKeyword] = useState('')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<Template | null>(null)
+  const [deleting, setDeleting] = useState<Template | null>(null)
+  const [deleteError, setDeleteError] = useState('')
+  const [deletingBusy, setDeletingBusy] = useState(false)
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (kw: string) => {
+    setLoadError('')
     try {
-      const list = await api.get<Template[]>(`/templates?keyword=${encodeURIComponent(keyword)}`)
+      const list = await api.get<Template[]>(`/templates?keyword=${encodeURIComponent(kw)}`)
       setTemplates(list)
-    } catch {
+    } catch (e) {
+      // 加载失败与空态区分：显示错误 + 重试，避免误判为「暂无模板」
       setTemplates([])
+      setLoadError(e instanceof Error ? e.message : '模板加载失败')
     }
-  }, [keyword])
+  }, [])
 
+  // 搜索防抖：停止输入 300ms 后再请求，避免连续键入打后端
   useEffect(() => {
-    void load()
-  }, [load])
+    const t = setTimeout(() => void load(keyword), 300)
+    return () => clearTimeout(t)
+  }, [keyword, load])
 
-  const onDelete = async (template: Template) => {
-    if (!window.confirm(`删除模板「${template.name}」？`)) return
-    await api.post('/templates/delete', { id: template.id })
-    await load()
+  const confirmDelete = async () => {
+    if (!deleting) return
+    setDeletingBusy(true)
+    setDeleteError('')
+    try {
+      await api.post('/templates/delete', { id: deleting.id })
+      setDeleting(null)
+      await load(keyword)
+    } catch (e) {
+      setDeleteError(e instanceof Error ? e.message : '删除失败')
+    } finally {
+      setDeletingBusy(false)
+    }
   }
 
   return (
@@ -62,7 +80,14 @@ export function TemplatesPage() {
       </div>
 
       <div className="px-6 pb-6 pt-4">
-        {templates === null ? (
+        {loadError ? (
+          <div className="flex flex-col items-center gap-3 py-12">
+            <p className="text-[13px] text-error">{loadError}</p>
+            <Button variant="outline" size="sm" onClick={() => void load(keyword)}>
+              重试
+            </Button>
+          </div>
+        ) : templates === null ? (
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
             <Skeleton className="h-32 rounded-xl" />
             <Skeleton className="h-32 rounded-xl" />
@@ -95,7 +120,10 @@ export function TemplatesPage() {
                       className="btn btn-ghost btn-sm text-destructive"
                       aria-label={`删除 ${t.name}`}
                       title="删除"
-                      onClick={() => void onDelete(t)}
+                      onClick={() => {
+                        setDeleteError('')
+                        setDeleting(t)
+                      }}
                     >
                       <Trash2 size={13} />
                     </button>
@@ -126,9 +154,29 @@ export function TemplatesPage() {
         onClose={() => setDialogOpen(false)}
         onSaved={async () => {
           setDialogOpen(false)
-          await load()
+          await load(keyword)
         }}
       />
+
+      <Dialog open={deleting !== null} onOpenChange={(v) => !v && setDeleting(null)}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle className="text-[15px] font-semibold">删除模板</DialogTitle>
+          </DialogHeader>
+          <p className="text-[13px] text-muted-foreground">
+            确定删除模板「{deleting?.name}」？此操作不可恢复。
+          </p>
+          {deleteError && <p className="text-[13px] text-error">{deleteError}</p>}
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setDeleting(null)} disabled={deletingBusy}>
+              取消
+            </Button>
+            <Button variant="destructive" size="sm" onClick={() => void confirmDelete()} disabled={deletingBusy}>
+              {deletingBusy ? '删除中…' : '删除'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

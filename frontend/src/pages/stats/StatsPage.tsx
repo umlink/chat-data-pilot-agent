@@ -44,7 +44,7 @@ function SummaryCard({
       </div>
       <div className="min-w-0">
         <div className="text-[11px] text-muted-foreground">{label}</div>
-        <div className="truncate text-lg font-semibold text-foreground">{value}</div>
+        <div className="truncate text-lg font-semibold tabular-nums text-foreground">{value}</div>
         <div className="text-[11px] text-muted-foreground">{hint}</div>
       </div>
     </div>
@@ -184,7 +184,11 @@ export function StatsPage() {
                       axisLine={false}
                       tick={{ fontSize: 9 }}
                       dy={6}
-                      tickFormatter={(v: string) => v.slice(5)}
+                      tickFormatter={(v: string) => {
+                        // 按「月-日」展示日期刻度，避免硬编码截断导致的时区/格式问题
+                        const parts = v.split('-')
+                        return parts.length >= 3 ? `${parts[1]}/${parts[2]}` : v
+                      }}
                     />
                     <YAxis
                       tickLine={false}
@@ -246,9 +250,11 @@ export function StatsPage() {
                   {(data?.models ?? []).map((m) => (
                     <tr key={m.model} className="border-t hover:bg-muted/50">
                       <td className="px-4 py-2.5 font-medium text-foreground">{m.model}</td>
-                      <td className="px-4 py-2.5 text-foreground">{m.tokens.toLocaleString('zh-CN')}</td>
-                      <td className="px-4 py-2.5 text-muted-foreground">{m.calls}</td>
-                      <td className="px-4 py-2.5 text-muted-foreground">{m.avg_latency_ms} ms</td>
+                      <td className="px-4 py-2.5 tabular-nums text-foreground">
+                        {m.tokens.toLocaleString('zh-CN')}
+                      </td>
+                      <td className="px-4 py-2.5 tabular-nums text-muted-foreground">{m.calls}</td>
+                      <td className="px-4 py-2.5 tabular-nums text-muted-foreground">{m.avg_latency_ms} ms</td>
                       <td className="px-4 py-2.5">
                         <div className="flex items-center gap-2">
                           <div className="h-1.5 w-24 overflow-hidden rounded-full bg-muted">
@@ -259,7 +265,7 @@ export function StatsPage() {
                               }}
                             />
                           </div>
-                          <span className="text-muted-foreground">
+                          <span className="tabular-nums text-muted-foreground">
                             {summary.total_tokens ? ((m.tokens / summary.total_tokens) * 100).toFixed(1) : '0.0'}%
                           </span>
                         </div>

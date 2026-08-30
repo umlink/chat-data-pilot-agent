@@ -39,6 +39,8 @@ export function AutomationRunsDialog({
   const [runs, setRuns] = useState<AutomationRunInfo[] | null>(null)
   const [error, setError] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [hasMore, setHasMore] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
 
   useEffect(() => {
     if (!automation) return
@@ -46,11 +48,14 @@ export function AutomationRunsDialog({
     setRuns(null)
     setSelectedId(null)
     setError('')
+    setHasMore(false)
     void api
-      .get<AutomationRunInfo[]>(`/automations/${automation.id}/runs?limit=20`)
+      .get<AutomationRunInfo[]>(`/automations/${automation.id}/runs?limit=20&offset=0`)
       .then((list) => {
         if (!alive) return
         setRuns(list)
+        // 返回不足 limit 视为没有更多
+        setHasMore(list.length >= 20)
         // 默认选中最近一次成功运行（有结果快照可看），否则第一条
         const first = list.find((r) => r.status === 'success' && r.result) ?? list[0]
         setSelectedId(first?.id ?? null)
@@ -63,6 +68,23 @@ export function AutomationRunsDialog({
     }
   }, [automation])
 
+  const loadMore = async () => {
+    if (!automation || runs === null || loadingMore) return
+    setLoadingMore(true)
+    try {
+      const next = await api.get<AutomationRunInfo[]>(
+        `/automations/${automation.id}/runs?limit=20&offset=${runs.length}`,
+      )
+      // 追加下一页；返回不足 limit 视为没有更多
+      setRuns((prev) => [...(prev ?? []), ...next])
+      setHasMore(next.length >= 20)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '加载更多失败')
+    } finally {
+      setLoadingMore(false)
+    }
+  }
+
   const selected = runs?.find((r) => r.id === selectedId) ?? null
 
   return (
@@ -70,7 +92,7 @@ export function AutomationRunsDialog({
       <DialogContent className="flex max-h-[85vh] flex-col overflow-hidden sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>运行历史 — {automation?.name ?? ''}</DialogTitle>
-          <DialogDescription>最近 20 次自动与手动执行记录，点击查看结果快照</DialogDescription>
+          <DialogDescription>自动与手动执行记录，点击查看结果快照</DialogDescription>
         </DialogHeader>
 
         {error && <p className="px-1 text-xs text-error">{error}</p>}
@@ -108,7 +130,14 @@ export function AutomationRunsDialog({
                       return (
                         <tr
                           key={r.id}
+                          tabIndex={0}
                           onClick={() => setSelectedId(r.id)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault()
+                              setSelectedId(r.id)
+                            }
+                          }}
                           className={cn(
                             'cursor-pointer border-t hover:bg-muted/50',
                             selectedId === r.id && 'bg-accent',
@@ -133,6 +162,19 @@ export function AutomationRunsDialog({
                   </tbody>
                 </table>
               </div>
+
+              {hasMore && (
+                <div className="flex justify-center">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void loadMore()}
+                    disabled={loadingMore}
+                  >
+                    {loadingMore ? '加载中…' : '加载更多'}
+                  </Button>
+                </div>
+              )}
 
               {selected && (
                 <div className="space-y-3 rounded-lg border bg-card p-4">

@@ -235,7 +235,8 @@ export function BlockViewer({
             </div>
             <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
               <div
-                className={`h-full rounded-full transition-all ${
+                // 进度条只对宽度做过渡动画，避免高度/背景色也参与 transition
+                className={`h-full rounded-full transition-[width] ${
                   content.failed ? 'bg-error' : content.cancelled ? 'bg-muted' : 'bg-primary'
                 }`}
                 style={{ width: `${content.percent}%` }}

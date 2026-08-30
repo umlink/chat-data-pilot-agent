@@ -43,6 +43,9 @@ export function NotificationChannelsPage() {
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState('')
   const [togglingId, setTogglingId] = useState<string | null>(null)
+  const [toggleError, setToggleError] = useState('')
+  const [logsHasMore, setLogsHasMore] = useState(false)
+  const [loadingMoreLogs, setLoadingMoreLogs] = useState(false)
 
   const load = useCallback(async () => {
     try {
@@ -56,12 +59,32 @@ export function NotificationChannelsPage() {
 
   const loadLogs = useCallback(async () => {
     try {
-      const data = await api.get<NotificationLogInfo[]>('/notifications/logs?limit=20')
+      const data = await api.get<NotificationLogInfo[]>('/notifications/logs?limit=20&offset=0')
       setLogs(data)
+      // 返回不足 limit 视为没有更多
+      setLogsHasMore(data.length >= 20)
     } catch {
       setLogs([])
+      setLogsHasMore(false)
     }
   }, [])
+
+  const loadMoreLogs = async () => {
+    if (logs === null || loadingMoreLogs) return
+    setLoadingMoreLogs(true)
+    try {
+      const next = await api.get<NotificationLogInfo[]>(
+        `/notifications/logs?limit=20&offset=${logs.length}`,
+      )
+      // 追加下一页；返回不足 limit 视为没有更多
+      setLogs((prev) => [...(prev ?? []), ...next])
+      setLogsHasMore(next.length >= 20)
+    } catch {
+      // 加载更多失败保持现有记录，按钮可重试
+    } finally {
+      setLoadingMoreLogs(false)
+    }
+  }
 
   useEffect(() => {
     void load()
@@ -71,11 +94,13 @@ export function NotificationChannelsPage() {
   const toggleEnabled = async (c: ChannelInfo, enabled: boolean) => {
     if (togglingId) return
     setTogglingId(c.id)
+    setToggleError('')
     try {
       await api.post('/notifications/channels/update', { id: c.id, enabled })
       setList((prev) => (prev ? prev.map((x) => (x.id === c.id ? { ...x, enabled } : x)) : prev))
-    } catch {
-      // 失败不改变本地状态
+    } catch (e) {
+      // 失败不改变本地状态（switch 回弹），并给出可读提示
+      setToggleError(`「${c.name}」启停失败：${e instanceof Error ? e.message : '未知错误'}`)
     } finally {
       setTogglingId(null)
     }
@@ -123,6 +148,19 @@ export function NotificationChannelsPage() {
             <Button variant="outline" size="sm" onClick={() => void load()}>
               重试
             </Button>
+          </div>
+        )}
+
+        {toggleError && (
+          <div className="flex items-center justify-between rounded-lg border border-error/30 bg-error-bg px-4 py-3">
+            <p className="text-xs text-error">{toggleError}</p>
+            <button
+              onClick={() => setToggleError('')}
+              aria-label="关闭提示"
+              className="text-xs text-muted-foreground hover:text-foreground"
+            >
+              关闭
+            </button>
           </div>
         )}
 
@@ -220,8 +258,9 @@ export function NotificationChannelsPage() {
               暂无发送记录
             </div>
           ) : (
-            <div className="overflow-hidden rounded-lg border bg-card">
-              <table className="w-full text-xs">
+            <>
+              <div className="overflow-hidden rounded-lg border bg-card">
+                <table className="w-full text-xs">
                 <thead>
                   <tr className="bg-muted text-left text-[11px] uppercase tracking-wide text-muted-foreground">
                     <th className="px-4 py-2 font-medium">时间</th>
@@ -255,7 +294,20 @@ export function NotificationChannelsPage() {
                   ))}
                 </tbody>
               </table>
-            </div>
+              </div>
+              {logsHasMore && (
+                <div className="mt-2 flex justify-center">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void loadMoreLogs()}
+                    disabled={loadingMoreLogs}
+                  >
+                    {loadingMoreLogs ? '加载中…' : '加载更多'}
+                  </Button>
+                </div>
+              )}
+            </>
           )}
         </section>
       </div>

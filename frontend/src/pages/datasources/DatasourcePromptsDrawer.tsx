@@ -137,7 +137,7 @@ export function DatasourcePromptsDrawer({ ds, onClose, onSaved }: Props) {
                   <button
                     onClick={() => remove(i)}
                     aria-label={`删除文案：${p}`}
-                    className="rounded-md p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+                    className="rounded-md p-2 text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/30"
                   >
                     <X size={14} />
                   </button>

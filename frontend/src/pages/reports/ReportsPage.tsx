@@ -53,6 +53,7 @@ export function ReportsPage() {
   const [deleteError, setDeleteError] = useState('')
   const [runningId, setRunningId] = useState<string | null>(null)
   const [runError, setRunError] = useState('')
+  const [toggleError, setToggleError] = useState('')
   const [togglingId, setTogglingId] = useState<string | null>(null)
 
   const load = useCallback(async () => {
@@ -92,11 +93,13 @@ export function ReportsPage() {
   const toggleEnabled = async (r: ReportInfo, enabled: boolean) => {
     if (togglingId) return
     setTogglingId(r.id)
+    setToggleError('')
     try {
       await api.post('/reports/update', { id: r.id, enabled })
       setList((prev) => (prev ? prev.map((x) => (x.id === r.id ? { ...x, enabled } : x)) : prev))
-    } catch {
-      // 失败不改变本地状态，下次加载自然回正
+    } catch (e) {
+      // 失败不改变本地状态（switch 回弹），并给出可读提示
+      setToggleError(`「${r.name}」启停失败：${e instanceof Error ? e.message : '未知错误'}`)
     } finally {
       setTogglingId(null)
     }
@@ -152,6 +155,19 @@ export function ReportsPage() {
             <p className="text-xs text-error">{runError}</p>
             <button
               onClick={() => setRunError('')}
+              aria-label="关闭提示"
+              className="text-xs text-muted-foreground hover:text-foreground"
+            >
+              关闭
+            </button>
+          </div>
+        )}
+
+        {toggleError && (
+          <div className="flex items-center justify-between rounded-lg border border-error/30 bg-error-bg px-4 py-3">
+            <p className="text-xs text-error">{toggleError}</p>
+            <button
+              onClick={() => setToggleError('')}
               aria-label="关闭提示"
               className="text-xs text-muted-foreground hover:text-foreground"
             >

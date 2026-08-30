@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
+import { X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { MASKED } from '@/types/config'
+import { MaskedInput } from '@/components/common/MaskedInput'
 import type { LlmProvider, LlmProviderForm } from '@/types/llmProvider'
 
 interface Props {
@@ -32,10 +34,12 @@ const TYPE_ITEMS: Record<string, string> = {
 }
 
 /** LLM 供应商新建/编辑弹窗（docs/UI设计规范.md 3.13：API Key 留空/掩码=保留旧值）
- *  模型为单输入框：models=[model]、default_model=model（后端契约为数组，此处提交单元素数组） */
+ *  支持维护多个模型并指定默认模型（后端契约为数组，避免编辑时截断丢模型）。 */
 export function ProviderFormDialog({ open, initial, onClose, onSubmit }: Props) {
   const [form, setForm] = useState<LlmProviderForm>(EMPTY)
-  const [model, setModel] = useState('')
+  const [models, setModels] = useState<string[]>([])
+  const [modelInput, setModelInput] = useState('')
+  const [defaultModel, setDefaultModel] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -50,29 +54,43 @@ export function ProviderFormDialog({ open, initial, onClose, onSubmit }: Props) 
         models: initial.models,
         default_model: initial.default_model,
       })
-      setModel(initial.models[0] ?? '')
+      setModels(initial.models)
+      setDefaultModel(initial.default_model || initial.models[0] || '')
     } else {
       setForm(EMPTY)
-      setModel('')
+      setModels([])
+      setModelInput('')
+      setDefaultModel('')
     }
     setError('')
   }, [open, initial])
 
-  const modelName = model.trim()
+  const addModel = () => {
+    const name = modelInput.trim()
+    if (!name) return
+    setModels((prev) => (prev.includes(name) ? prev : [...prev, name]))
+    setModelInput('')
+  }
+
+  const removeModel = (name: string) => {
+    setModels((prev) => prev.filter((m) => m !== name))
+    setDefaultModel((prev) => (prev === name ? '' : prev))
+  }
 
   const submit = async () => {
     if (!form.name.trim()) {
       setError('请输入供应商名称')
       return
     }
-    if (!modelName) {
-      setError('请输入模型名称')
+    const finalModels = models.map((m) => m.trim()).filter(Boolean)
+    if (finalModels.length === 0) {
+      setError('请至少添加一个模型名称')
       return
     }
     const payload: LlmProviderForm = {
       ...form,
-      models: [modelName],
-      default_model: modelName,
+      models: finalModels,
+      default_model: defaultModel || finalModels[0],
       // 编辑时保持掩码语义：未输入则传 MASKED（后端保留旧值）；新增时空串
       api_key: initial ? form.api_key || MASKED : form.api_key,
     }
@@ -86,6 +104,8 @@ export function ProviderFormDialog({ open, initial, onClose, onSubmit }: Props) 
       setSaving(false)
     }
   }
+
+  const MODEL_ITEMS = Object.fromEntries(models.map((m) => [m, m]))
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
@@ -124,21 +144,73 @@ export function ProviderFormDialog({ open, initial, onClose, onSubmit }: Props) 
           </div>
           <div className="space-y-1.5">
             <Label className="text-[13px]">API Key</Label>
-            <Input
-              type="password"
+            <MaskedInput
               value={form.api_key}
+              onChange={(v) => setForm({ ...form, api_key: v })}
               placeholder={initial ? '已保存（留空不修改）' : 'sk-…'}
-              onChange={(e) => setForm({ ...form, api_key: e.target.value })}
             />
           </div>
           <div className="space-y-1.5">
             <Label className="text-[13px]">模型名称</Label>
-            <Input
-              value={model}
-              placeholder="deepseek-chat"
-              onChange={(e) => setModel(e.target.value)}
-            />
-            <p className="text-[11px] text-muted-foreground">该模型即默认使用模型</p>
+            <div className="flex gap-2">
+              <Input
+                value={modelInput}
+                placeholder="如：deepseek-chat"
+                onChange={(e) => setModelInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    addModel()
+                  }
+                }}
+              />
+              <Button size="sm" variant="outline" onClick={addModel} disabled={!modelInput.trim()}>
+                添加
+              </Button>
+            </div>
+            {models.length > 0 ? (
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {models.map((m) => (
+                  <span
+                    key={m}
+                    className={`badge ${m === defaultModel ? 'badge-primary' : 'badge-secondary'}`}
+                  >
+                    {m}
+                    <button
+                      type="button"
+                      aria-label={`移除模型 ${m}`}
+                      className="ml-1 text-current opacity-70 hover:opacity-100"
+                      onClick={() => removeModel(m)}
+                    >
+                      <X size={11} />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="text-[11px] text-muted-foreground">添加一个或多个模型名称</p>
+            )}
+            {models.length > 1 && (
+              <div className="flex items-center gap-2 pt-1">
+                <span className="text-[11px] text-muted-foreground">默认模型</span>
+                <Select
+                  value={defaultModel}
+                  items={MODEL_ITEMS}
+                  onValueChange={(v) => setDefaultModel(String(v ?? ''))}
+                >
+                  <SelectTrigger className="h-7 w-44">
+                    <SelectValue placeholder="选择默认" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {models.map((m) => (
+                      <SelectItem key={m} value={m}>
+                        {m}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
           {error && <p className="text-[13px] text-error">{error}</p>}
         </div>

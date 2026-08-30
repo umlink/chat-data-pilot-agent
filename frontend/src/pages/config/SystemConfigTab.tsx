@@ -8,10 +8,25 @@ interface Props {
   setField: (key: string, field: string, value: unknown) => void
 }
 
-function NumInput({ value, onChange, min = 0 }: { value: unknown; onChange: (v: number) => void; min?: number }) {
+function NumInput({
+  id,
+  name,
+  value,
+  onChange,
+  min = 0,
+}: {
+  id?: string
+  name?: string
+  value: unknown
+  onChange: (v: number) => void
+  min?: number
+}) {
   return (
     <Input
       type="number"
+      id={id}
+      name={name}
+      autoComplete="off"
       min={min}
       className={fieldInputCls()}
       value={Number(value ?? 0)}
@@ -39,32 +54,68 @@ export function SystemConfigTab({ config, setField }: Props) {
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
       <ConfigCard title="查询引擎" hint="SQL 查询返回结果上限（system.query）">
-        <FieldRow label="最大返回行数">
-          <NumInput value={query.max_query_rows} min={1} onChange={(v) => setField('system.query', 'max_query_rows', v)} />
+        <FieldRow label="最大返回行数" htmlFor="cfg-max-query-rows">
+          <NumInput
+            id="cfg-max-query-rows"
+            name="max_query_rows"
+            value={query.max_query_rows}
+            min={1}
+            onChange={(v) => setField('system.query', 'max_query_rows', v)}
+          />
         </FieldRow>
       </ConfigCard>
 
       <ConfigCard title="任务队列" hint="Worker 执行与并发（system.task）">
-        <FieldRow label="超时（秒）">
-          <NumInput value={task.timeout_seconds} min={1} onChange={(v) => setField('system.task', 'timeout_seconds', v)} />
+        <FieldRow label="超时（秒）" htmlFor="cfg-task-timeout">
+          <NumInput
+            id="cfg-task-timeout"
+            name="timeout_seconds"
+            value={task.timeout_seconds}
+            min={1}
+            onChange={(v) => setField('system.task', 'timeout_seconds', v)}
+          />
         </FieldRow>
-        <FieldRow label="最大并发">
-          <NumInput value={task.max_concurrency} min={1} onChange={(v) => setField('system.task', 'max_concurrency', v)} />
+        <FieldRow label="最大并发" htmlFor="cfg-task-concurrency">
+          <NumInput
+            id="cfg-task-concurrency"
+            name="max_concurrency"
+            value={task.max_concurrency}
+            min={1}
+            onChange={(v) => setField('system.task', 'max_concurrency', v)}
+          />
         </FieldRow>
       </ConfigCard>
 
       <ConfigCard title="附件上传" hint="单文件大小上限（system.upload）">
-        <FieldRow label="最大大小（MB）">
-          <NumInput value={upload.max_size_mb} min={1} onChange={(v) => setField('system.upload', 'max_size_mb', v)} />
+        <FieldRow label="最大大小（MB）" htmlFor="cfg-upload-size">
+          <NumInput
+            id="cfg-upload-size"
+            name="max_size_mb"
+            value={upload.max_size_mb}
+            min={1}
+            onChange={(v) => setField('system.upload', 'max_size_mb', v)}
+          />
         </FieldRow>
       </ConfigCard>
 
       <ConfigCard title="会话与日志保留" hint="自动清理周期（system.session / system.log）">
-        <FieldRow label="会话保留（天）">
-          <NumInput value={session.retention_days} min={1} onChange={(v) => setField('system.session', 'retention_days', v)} />
+        <FieldRow label="会话保留（天）" htmlFor="cfg-session-retention">
+          <NumInput
+            id="cfg-session-retention"
+            name="retention_days"
+            value={session.retention_days}
+            min={1}
+            onChange={(v) => setField('system.session', 'retention_days', v)}
+          />
         </FieldRow>
-        <FieldRow label="日志保留（天）">
-          <NumInput value={log.retention_days} min={1} onChange={(v) => setField('system.log', 'retention_days', v)} />
+        <FieldRow label="日志保留（天）" htmlFor="cfg-log-retention">
+          <NumInput
+            id="cfg-log-retention"
+            name="retention_days"
+            value={log.retention_days}
+            min={1}
+            onChange={(v) => setField('system.log', 'retention_days', v)}
+          />
         </FieldRow>
       </ConfigCard>
 

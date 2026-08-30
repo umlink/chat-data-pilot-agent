@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '@/lib/api'
+import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { DataSourceInfo } from '@/store/dataSourceStore'
@@ -30,6 +31,7 @@ export function DataSourcePreviewDialog({ ds, onClose }: Props) {
   const [data, setData] = useState<PreviewData | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [reloadKey, setReloadKey] = useState(0)
 
   useEffect(() => {
     if (!ds) return
@@ -48,7 +50,7 @@ export function DataSourcePreviewDialog({ ds, onClose }: Props) {
     return () => {
       alive = false
     }
-  }, [ds])
+  }, [ds, reloadKey])
 
   return (
     <Dialog
@@ -85,7 +87,22 @@ export function DataSourcePreviewDialog({ ds, onClose }: Props) {
             <Skeleton className="h-7 w-full" />
           </div>
         )}
-        {error && <p className="rounded-md bg-error-bg px-3 py-2 text-xs text-error">{error}</p>}
+        {error && (
+          <div className="flex items-center justify-between gap-2 rounded-md bg-error-bg px-3 py-2 text-xs text-error">
+            <span>{error}</span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setLoading(true)
+                setError('')
+                setReloadKey((k) => k + 1)
+              }}
+            >
+              重试
+            </Button>
+          </div>
+        )}
         {!loading && !error && data && data.rows.length === 0 && (
           <p className="py-10 text-center text-xs text-muted-foreground">该表暂无数据</p>
         )}

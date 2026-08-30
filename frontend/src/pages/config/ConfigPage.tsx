@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Save } from 'lucide-react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
@@ -10,6 +10,15 @@ import { LlmProvidersTab } from './LlmProvidersTab'
 import { SystemConfigTab, makeSystemKeys } from './SystemConfigTab'
 import { ConfigCard } from './FormKit'
 
+/** 时间格式化：与其它列表一致的 'YYYY-MM-DD HH:mm:ss' 展示，避免裸渲染 ISO */
+function formatTime(value?: string | null): string {
+  if (!value) return '-'
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return value
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
+}
+
 /** 配置管理页：LLM / 系统双 tab + 最近审计日志（docs/技术方案设计 2.3 配置 API / 3.6 页面） */
 export function ConfigPage() {
   const [config, setConfig] = useState<ConfigMap | null>(null)
@@ -17,6 +26,18 @@ export function ConfigPage() {
   const [saving, setSaving] = useState(false)
   const [notice, setNotice] = useState('')
   const [logs, setLogs] = useState<LogEntry[]>([])
+  const [logsError, setLogsError] = useState('')
+
+  const loadLogs = useCallback(async () => {
+    try {
+      const page = await api.get<LogsPage>('/logs?category=audit&page=1&page_size=5')
+      setLogs(page.items ?? [])
+      setLogsError('')
+    } catch (e) {
+      // 加载失败展示可读错误 + 重试，不静默当空数据处理
+      setLogsError(e instanceof Error ? e.message : '审计日志加载失败')
+    }
+  }, [])
 
   useEffect(() => {
     void (async () => {
@@ -29,15 +50,8 @@ export function ConfigPage() {
         setConfig({})
       }
     })()
-    void (async () => {
-      try {
-        const page = await api.get<LogsPage>('/logs?category=audit&page=1&page_size=5')
-        setLogs(page.items ?? [])
-      } catch {
-        setLogs([])
-      }
-    })()
-  }, [])
+    void loadLogs()
+  }, [loadLogs])
 
   const setField = (key: string, field: string, value: unknown) => {
     setConfig((prev) => {
@@ -121,7 +135,14 @@ export function ConfigPage() {
         </Tabs>
 
         <ConfigCard className="mt-4" title="最近审计日志" hint="配置变更、任务执行等关键操作（GET /api/logs?category=audit）">
-          {logs.length === 0 ? (
+          {logsError ? (
+            <div className="flex items-center justify-between rounded-lg border border-error/30 bg-error-bg px-4 py-3">
+              <p className="text-xs text-error">{logsError}</p>
+              <Button variant="outline" size="sm" onClick={() => void loadLogs()}>
+                重试
+              </Button>
+            </div>
+          ) : logs.length === 0 ? (
             <p className="py-4 text-center text-[13px] text-muted-foreground">暂无审计记录</p>
           ) : (
             <div className="overflow-hidden rounded-lg border">
@@ -139,12 +160,16 @@ export function ConfigPage() {
                     const ctx = l.context ?? {}
                     return (
                       <tr key={l.id ?? String(l.timestamp)} className="border-b last:border-b-0 text-foreground">
-                        <td className="px-3 py-2 font-mono text-[11px] text-muted-foreground">{l.timestamp}</td>
+                        <td className="px-3 py-2 font-mono text-[11px] text-muted-foreground">
+                          {formatTime(l.timestamp)}
+                        </td>
                         <td className="px-3 py-2">{String(ctx.user ?? '-')}</td>
                         <td className="px-3 py-2">
                           {String(ctx.resource ?? l.category)} · {String(ctx.action ?? '-')}
                         </td>
-                        <td className="px-3 py-2 text-muted-foreground">{l.message}</td>
+                        <td className="max-w-[320px] truncate px-3 py-2 text-muted-foreground" title={l.message}>
+                          {l.message}
+                        </td>
                       </tr>
                     )
                   })}

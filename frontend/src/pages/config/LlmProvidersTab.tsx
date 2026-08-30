@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Check, Plus, Shield, Sparkles, Trash2, Zap } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { api } from '@/lib/api'
@@ -19,6 +20,7 @@ interface Props {
 export function LlmProvidersTab({ config, setField }: Props) {
   const providers = useLlmProviderStore((s) => s.providers)
   const loaded = useLlmProviderStore((s) => s.loaded)
+  const loadError = useLlmProviderStore((s) => s.loadError)
   const load = useLlmProviderStore((s) => s.load)
   const create = useLlmProviderStore((s) => s.create)
   const update = useLlmProviderStore((s) => s.update)
@@ -29,6 +31,10 @@ export function LlmProvidersTab({ config, setField }: Props) {
   const [editing, setEditing] = useState<LlmProvider | null>(null)
   const [testingId, setTestingId] = useState<string | null>(null)
   const [testResults, setTestResults] = useState<Record<string, ProviderTestResult>>({})
+  const [deleteTarget, setDeleteTarget] = useState<LlmProvider | null>(null)
+  const [deleteError, setDeleteError] = useState('')
+  const [deleting, setDeleting] = useState(false)
+  const [actionError, setActionError] = useState('')
 
   useEffect(() => {
     if (!loaded) void load()
@@ -49,9 +55,27 @@ export function LlmProvidersTab({ config, setField }: Props) {
     }
   }
 
-  const onDelete = async (p: LlmProvider) => {
-    if (!window.confirm(`删除供应商「${p.name}」？${p.is_default ? '默认供应商删除后将自动提升最新一项。' : ''}`)) return
-    await remove(p.id)
+  const confirmDelete = async () => {
+    if (!deleteTarget) return
+    setDeleting(true)
+    setDeleteError('')
+    try {
+      await remove(deleteTarget.id)
+      setDeleteTarget(null)
+    } catch (e) {
+      setDeleteError(e instanceof Error ? e.message : '删除失败')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  const onSetDefault = async (p: LlmProvider) => {
+    setActionError('')
+    try {
+      await setDefault(p.id)
+    } catch (e) {
+      setActionError(`「${p.name}」设为默认失败：${e instanceof Error ? e.message : '未知错误'}`)
+    }
   }
 
   const generation = config['llm.provider'] ?? {}
@@ -121,7 +145,7 @@ export function LlmProvidersTab({ config, setField }: Props) {
                     className="btn btn-ghost btn-sm"
                     aria-label={`设为默认 ${p.name}`}
                     title="设为默认供应商"
-                    onClick={() => void setDefault(p.id)}
+                    onClick={() => void onSetDefault(p)}
                   >
                     <Check size={13} /> 设为默认
                   </button>
@@ -141,7 +165,10 @@ export function LlmProvidersTab({ config, setField }: Props) {
                   className="btn btn-ghost btn-sm text-destructive hover:text-destructive"
                   aria-label={`删除 ${p.name}`}
                   title="删除"
-                  onClick={() => void onDelete(p)}
+                  onClick={() => {
+                    setDeleteError('')
+                    setDeleteTarget(p)
+                  }}
                 >
                   <Trash2 size={13} />
                 </button>
@@ -149,10 +176,30 @@ export function LlmProvidersTab({ config, setField }: Props) {
             </div>
           )
         })}
-        {loaded && providers.length === 0 && (
+        {loadError ? (
+          <div className="flex items-center justify-between rounded-lg border border-error/30 bg-error-bg px-4 py-3">
+            <p className="text-xs text-error">{loadError}</p>
+            <Button variant="outline" size="sm" onClick={() => void load()}>
+              重试
+            </Button>
+          </div>
+        ) : loaded && providers.length === 0 ? (
           <p className="py-8 text-center text-[13px] text-muted-foreground">暂无供应商，点击「新增供应商」创建第一个</p>
-        )}
+        ) : null}
       </div>
+
+      {actionError && (
+        <div className="flex items-center justify-between rounded-lg border border-error/30 bg-error-bg px-4 py-3">
+          <p className="text-xs text-error">{actionError}</p>
+          <button
+            onClick={() => setActionError('')}
+            aria-label="关闭提示"
+            className="text-xs text-muted-foreground hover:text-foreground"
+          >
+            关闭
+          </button>
+        </div>
+      )}
 
       <ConfigCard title="生成参数" hint="会话级生成参数（llm.provider）：温度 / 限制 / 超时 / 重试">
         <FieldRow label="Temperature" hint="0–2，越大越发散">
@@ -207,6 +254,27 @@ export function LlmProvidersTab({ config, setField }: Props) {
         onClose={() => setDialogOpen(false)}
         onSubmit={(form) => (editing ? update(editing.id, form) : create(form))}
       />
+
+      <Dialog open={deleteTarget !== null} onOpenChange={(v) => !v && setDeleteTarget(null)}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle className="text-[15px] font-semibold">删除供应商</DialogTitle>
+          </DialogHeader>
+          <p className="text-[13px] text-muted-foreground">
+            确定删除供应商「{deleteTarget?.name}」？
+            {deleteTarget?.is_default ? '默认供应商删除后将自动提升最新一项。' : '此操作不可恢复。'}
+          </p>
+          {deleteError && <p className="text-[13px] text-error" role="alert">{deleteError}</p>}
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setDeleteTarget(null)} disabled={deleting}>
+              取消
+            </Button>
+            <Button variant="destructive" size="sm" onClick={() => void confirmDelete()} disabled={deleting}>
+              {deleting ? '删除中…' : '删除'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

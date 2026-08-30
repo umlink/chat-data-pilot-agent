@@ -113,12 +113,21 @@ export function PushToChannelDialog({ open, onOpenChange, subject, body }: Props
           {result
             ? result.ok
               ? (
-                  <div className="flex items-center gap-1.5 rounded border border-success/30 bg-success/5 px-3 py-2 text-[13px] text-success">
+                  // 异步推送结果：aria-live=polite 让读屏播报成功/失败状态
+                  <div
+                    role="status"
+                    aria-live="polite"
+                    className="flex items-center gap-1.5 rounded border border-success/30 bg-success/5 px-3 py-2 text-[13px] text-success"
+                  >
                     <CheckCircle2 className="size-4 shrink-0" /> 推送成功
                   </div>
                 )
               : (
-                  <div className="flex items-start gap-1.5 rounded border border-error/30 bg-error/5 px-3 py-2 text-[13px] text-error">
+                  <div
+                    role="status"
+                    aria-live="polite"
+                    className="flex items-start gap-1.5 rounded border border-error/30 bg-error/5 px-3 py-2 text-[13px] text-error"
+                  >
                     <AlertCircle className="mt-0.5 size-4 shrink-0" />
                     <span>{result.error ?? '推送失败'}</span>
                   </div>

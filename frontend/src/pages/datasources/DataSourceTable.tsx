@@ -82,7 +82,11 @@ export function DataSourceTable({
             const testState = testMap[ds.id]
             return (
               <tr key={ds.id} className="border-t hover:bg-muted/50">
-                <td className="px-4 py-2.5 font-medium text-foreground">{ds.name}</td>
+                <td className="px-4 py-2.5 font-medium text-foreground">
+                  <span className="block max-w-[220px] truncate" title={ds.name}>
+                    {ds.name}
+                  </span>
+                </td>
                 <td className="px-4 py-2.5">
                   <span className={`badge ${isFileType(ds.type) ? 'badge-outline' : 'badge-secondary'}`}>
                     {datasourceTypeLabel(ds.type)}

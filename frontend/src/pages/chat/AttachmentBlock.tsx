@@ -10,6 +10,15 @@ import {
 } from './useAttachments'
 import { useChatStore } from '@/store/chatStore'
 import type { AttachmentContent } from '@/types/message'
+import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 
 interface Props {
   content: AttachmentContent
@@ -155,6 +164,10 @@ export function AttachmentBlock({ content, context }: Props) {
   const [previewData, setPreviewData] = useState<PreviewResponse | null>(null)
   const [busy, setBusy] = useState(false)
   const [actionError, setActionError] = useState('')
+  // 移除确认 Dialog：open 受控 + removing 防重复提交 + removeError 站内展示删除失败原因
+  const [removeOpen, setRemoveOpen] = useState(false)
+  const [removing, setRemoving] = useState(false)
+  const [removeError, setRemoveError] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
   const patchBlock = useChatStore((s) => s.patchBlock)
   const ready = content.status === 'ready'
@@ -248,11 +261,11 @@ export function AttachmentBlock({ content, context }: Props) {
     }
   }
 
+  /** 移除附件：由确认 Dialog 触发，失败原因站内展示，成功后关闭 */
   const onRemove = async () => {
-    if (!context) return
-    if (!window.confirm(`确定移除附件「${content.file_name}」吗？移除后该附件将无法用于分析。`)) return
-    setBusy(true)
-    setActionError('')
+    if (!context || removing) return
+    setRemoving(true)
+    setRemoveError('')
     try {
       // 先持久化 block 状态（删除后附件记录不存在，无法再定位 block），再删资源
       await updateAttachmentBlockState(content.attachment_id, context.messageId, context.blockId, {
@@ -262,10 +275,11 @@ export function AttachmentBlock({ content, context }: Props) {
       patchContent({ removed: true, error: undefined })
       setPreviewing(false)
       setPreviewData(null)
+      setRemoveOpen(false)
     } catch (e) {
-      setActionError(e instanceof Error ? e.message : '移除失败')
+      setRemoveError(e instanceof Error ? e.message : '移除失败')
     } finally {
-      setBusy(false)
+      setRemoving(false)
     }
   }
 
@@ -283,7 +297,15 @@ export function AttachmentBlock({ content, context }: Props) {
             <ActionButton onClick={() => fileRef.current?.click()} ariaLabel="替换附件" title="替换附件（新文件）" disabled={busy}>
               <RefreshCw size={13} />
             </ActionButton>
-            <ActionButton onClick={() => void onRemove()} ariaLabel="移除附件" title="移除附件" disabled={busy}>
+            <ActionButton
+              onClick={() => {
+                setRemoveError('')
+                setRemoveOpen(true)
+              }}
+              ariaLabel="移除附件"
+              title="移除附件"
+              disabled={busy}
+            >
               <Trash2 size={13} />
             </ActionButton>
           </div>
@@ -305,6 +327,36 @@ export function AttachmentBlock({ content, context }: Props) {
           onChange={(e) => void onPickReplaceFile(e.target.files?.[0] ?? null)}
         />
       )}
+
+      {/* 移除确认 Dialog（替代 window.confirm）：失败原因站内展示，删除中禁用按钮防重复提交 */}
+      <Dialog open={removeOpen} onOpenChange={setRemoveOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>移除附件</DialogTitle>
+            <DialogDescription>
+              确定移除附件「{content.file_name}」吗？移除后该附件将无法用于分析。
+            </DialogDescription>
+          </DialogHeader>
+          {removeError ? (
+            <div className="rounded border border-error/30 bg-error/5 px-3 py-2 text-[11px] text-error">
+              {removeError}
+            </div>
+          ) : null}
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setRemoveOpen(false)}
+              disabled={removing}
+            >
+              取消
+            </Button>
+            <Button type="button" variant="destructive" onClick={() => void onRemove()} disabled={removing}>
+              {removing ? '删除中…' : '确认删除'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

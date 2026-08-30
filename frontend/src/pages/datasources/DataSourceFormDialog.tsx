@@ -8,6 +8,7 @@ import type { DataSourceInfo } from '@/store/dataSourceStore'
 import { CONFIG_FIELDS, DATASOURCE_TYPE_OPTIONS, FILE_TYPES, datasourceTypeLabel, type DatasourceType, type TestResult } from './constants'
 import { DataSourceConfigFields } from './DataSourceConfigFields'
 import { DataSourceFormFooter } from './DataSourceFormFooter'
+import { MASKED } from '@/types/config'
 
 interface Props {
   open: boolean
@@ -85,6 +86,15 @@ export function DataSourceFormDialog({ open, editing, onOpenChange, onSaved }: P
   }
 
   const testConnection = async () => {
+    // 编辑态未重输的密码字段仍为掩码（******）：/datasources/test 使用明文密码且不识别掩码，
+    // 直接提交必然失败 → 提示重输；保存路径走 update 的 upsert_secret（掩码=保留旧密文）不受影响。
+    const maskedPwd = CONFIG_FIELDS[type].find(
+      (f) => f.type === 'password' && (form[f.name] ?? '') === MASKED,
+    )
+    if (maskedPwd) {
+      setError(`请重新输入「${maskedPwd.label}」后再测试连接（出于安全，测试需使用明文密码）`)
+      return
+    }
     setTesting(true)
     setError('')
     setTestResult(null)
@@ -99,9 +109,16 @@ export function DataSourceFormDialog({ open, editing, onOpenChange, onSaved }: P
   }
 
   const save = async () => {
-    if (type === 'sqlite' && !(form.path ?? '').trim()) {
-      setError('SQLite 需要填写文件路径')
+    if (!name.trim()) {
+      setError('请填写名称')
       return
+    }
+    // 逐字段校验必填项，缺哪个提示哪个（不依赖 disabled 拦截）
+    for (const f of CONFIG_FIELDS[type]) {
+      if (f.required && !(form[f.name] ?? '').trim()) {
+        setError(`请填写${f.label}`)
+        return
+      }
     }
     setSaving(true)
     setError('')
@@ -146,18 +163,25 @@ export function DataSourceFormDialog({ open, editing, onOpenChange, onSaved }: P
           )}
 
           <div className="space-y-1.5">
-            <Label>名称</Label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="例如：生产库" />
+            <Label htmlFor="ds-name">名称</Label>
+            <Input
+              id="ds-name"
+              name="name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="例如：生产库"
+              autoComplete="off"
+            />
           </div>
 
           <div className="space-y-1.5">
-            <Label>类型</Label>
+            <Label htmlFor="ds-type">类型</Label>
             <Select
               value={type}
               items={Object.fromEntries(DATASOURCE_TYPE_OPTIONS.map((o) => [o.value, o.label]))}
               onValueChange={changeType}
             >
-              <SelectTrigger className="w-full">
+              <SelectTrigger id="ds-type" className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

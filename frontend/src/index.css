@@ -6,6 +6,7 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
+  color-scheme: light;
   /* 画布：浅灰底（白卡浮起），对齐参考设计系统（Image #1/#2） */
   --background: oklch(0.98 0 0);
   --foreground: oklch(0.145 0 0);
@@ -140,6 +141,7 @@ html, body, #root {
 }
 
 .dark {
+  color-scheme: dark;
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.205 0 0);
@@ -371,19 +373,23 @@ html, body, #root {
 
 /* ---- 动效（docs/UI设计规范.md 5） ---- */
 @keyframes pulse-dot { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
-@keyframes slide-in-right { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
-@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
 .animate-pulse-dot { animation: pulse-dot 1.4s ease-in-out infinite; }
-.animate-slide-in-right { animation: slide-in-right 0.3s ease-out; }
-.animate-fade-in { animation: fade-in 0.2s ease-out; }
 
 /* 登录页品牌区装饰动画（缓慢漂移/悬浮，prefers-reduced-motion 时静止） */
 @keyframes dp-drift { 0%, 100% { transform: translate3d(0, 0, 0) scale(1); } 50% { transform: translate3d(28px, -20px, 0) scale(1.06); } }
 @keyframes dp-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
 .dp-drift { animation: dp-drift 16s ease-in-out infinite; will-change: transform; }
 .dp-float { animation: dp-float 7s ease-in-out infinite; will-change: transform; }
+
+/* prefers-reduced-motion：所有动画/过渡降级为瞬时（含 tw-animate-css 出入场），装饰动画静止 */
 @media (prefers-reduced-motion: reduce) {
   .dp-drift, .dp-float { animation: none; }
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 @layer base {

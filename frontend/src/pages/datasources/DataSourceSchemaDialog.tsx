@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Table2 } from 'lucide-react'
 import { api } from '@/lib/api'
+import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { DataSourceInfo } from '@/store/dataSourceStore'
@@ -64,6 +65,7 @@ export function DataSourceSchemaDialog({ ds, onClose }: { ds: DataSourceInfo | n
   const [selected, setSelected] = useState<SchemaTable | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [reloadKey, setReloadKey] = useState(0)
 
   useEffect(() => {
     if (!ds) return
@@ -84,7 +86,7 @@ export function DataSourceSchemaDialog({ ds, onClose }: { ds: DataSourceInfo | n
     return () => {
       alive = false
     }
-  }, [ds])
+  }, [ds, reloadKey])
 
   const tables = schema?.tables ?? []
 
@@ -115,7 +117,22 @@ export function DataSourceSchemaDialog({ ds, onClose }: { ds: DataSourceInfo | n
           <aside className="w-60 shrink-0 overflow-y-auto border-r p-2">
             {loading &&
               Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="mb-1.5 h-7 w-full" />)}
-            {!loading && error && <p className="p-2 text-xs text-error">{error}</p>}
+            {!loading && error && (
+              <div className="flex items-center justify-between gap-2 p-2 text-xs text-error">
+                <span>{error}</span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setLoading(true)
+                    setError('')
+                    setReloadKey((k) => k + 1)
+                  }}
+                >
+                  重试
+                </Button>
+              </div>
+            )}
             {!loading && !error &&
               tables.map((t) => {
                 const key = `${t.schema}.${t.name}`
@@ -124,7 +141,7 @@ export function DataSourceSchemaDialog({ ds, onClose }: { ds: DataSourceInfo | n
                   <button
                     key={key}
                     onClick={() => setSelected(t)}
-                    className={`flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-[13px] ${
+                    className={`flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-ring/30 ${
                       active
                         ? 'bg-accent font-medium text-foreground'
                         : 'text-muted-foreground hover:bg-muted/50'

@@ -123,7 +123,7 @@
 - 组件一律具名导出（`export function X`），禁止默认导出组件；props 用 `interface Props`。
 - 目录：
   - 页面按路由级收在 `pages/<route>/`，页面入口由 `routers/` 唯一引用，命名与路由/领域概念一致（如 `pages/board/BoardPage.tsx`、`pages/datasources/DataSourcePage.tsx`、`pages/chat/ChatArea.tsx`、`pages/notifications/NotificationChannelsPage.tsx`）；页面私有子组件与私有 hooks 随页同目录。
-  - `components/` 只放跨页面共享组件（`ui/` shadcn 原语、`layout/` 外壳、`common/` 通用含 `Placeholder`/`MaskedInput`、`chat/` 的共享渲染 `ChartBlock/TableBlock/SqlQueryDialog/PushToChannelDialog/SqlHistoryDialog`）。
+  - `components/` 只放跨页面共享组件（`ui/` shadcn 原语、`layout/` 外壳、`common/` 通用含 `MaskedInput`、`chat/` 的共享渲染 `ChartBlock/TableBlock/SqlQueryDialog/PushToChannelDialog/SqlHistoryDialog`）。
   - 路由表只放在 `routers/`；禁止 `components/` 反向引用 `@/pages/...`。
 - 组件保持短小（< ~200 行）；跨页面共享逻辑抽 `hooks/`（如 `useChat` 供 AppShell/Sidebar 共用），页面私有 hooks 随页放 `pages/<route>/`；跨页面共享状态进 `store/`（zustand）。
 - 列表/大表用虚拟化（@tanstack/react-virtual）与 memo，禁止整表重渲染。
@@ -137,7 +137,7 @@
 - 请求经 `lib/api.ts`（信封解析、自动带 token、统一抛 `ApiError`）；流式经 `lib/sseClient.ts` 的 `streamSSE`。
 - `src/types/message.ts` 是契约类型唯一来源，**与 `backend/app/schemas/common.py` 保持镜像**，改一端必须同步另一端。
 - Block 渲染：`type` 决定 content 形状，访问时按 type 断言字段；`block_update` 只做浅合并 patch，避免整树重建。
-- 消息流：token 缓冲合并（50ms / 10 token）后批量 setState（见 Block 契约 6.3）；会话切换必须 `AbortController` 取消进行中的 SSE。
+- 消息流：token 缓冲合并（50ms / 10 token）后批量 setState（见 Block 契约 6.3）；SSE 按 sessionId 隔离——同会话发新消息 abort 旧流防竞态，切换会话后台流继续（切回可见已完成结果），登出/卸载取消全部（`cancelAllStreams`）。
 
 ### 5.5 质量底线
 - 无 `console.log` 残留（调试用 `console.debug` 提交前删除）；错误路径必须有用户可读的中文提示。

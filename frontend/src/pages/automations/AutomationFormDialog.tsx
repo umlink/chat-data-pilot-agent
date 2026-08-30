@@ -34,6 +34,13 @@ const CHART_TYPES = [
 ]
 const CHART_TYPE_ITEMS = Object.fromEntries(CHART_TYPES.map((t) => [t.value, t.label]))
 
+/** 5 段 cron 基本校验（分 时 日 月 周）：每段非空，由数字 / * / - / , / 组合（宽松校验，不校验取值域） */
+function isValidCron(expr: string): boolean {
+  const fields = expr.trim().split(/\s+/)
+  if (fields.length !== 5) return false
+  return fields.every((f) => /^(\*|\d+)([-,/](\*|\d+))*$/.test(f))
+}
+
 interface VarPair {
   key: string
   value: string
@@ -143,6 +150,9 @@ export function AutomationFormDialog({
 
   const patch = (p: Partial<FormDraft>) => setDraft((d) => ({ ...d, ...p }))
 
+  // cron 实时校验：非法时禁用保存并在字段下方内联提示
+  const cronInvalid = !isValidCron(draft.cronExpression)
+
   const submit = async () => {
     if (saving) return
     if (!draft.name.trim()) {
@@ -153,12 +163,20 @@ export function AutomationFormDialog({
       setError('请选择数据源（定时任务必须绑定数据源）')
       return
     }
-    if (!draft.cronExpression.trim()) {
-      setError('请输入 cron 表达式')
+    if (!isValidCron(draft.cronExpression)) {
+      setError('cron 格式不正确（如：0 9 * * 1-5）')
       return
     }
     if (!draft.sqlText.trim()) {
       setError('请输入查询 SQL')
+      return
+    }
+    // 勾选了成功/失败通知但未选通知渠道时阻止提交
+    if (
+      (draft.notifySuccess && !draft.notifySuccessChannel) ||
+      (draft.notifyFailure && !draft.notifyFailureChannel)
+    ) {
+      setError('请先选择通知渠道')
       return
     }
     if (draft.withChart) {
@@ -260,6 +278,9 @@ export function AutomationFormDialog({
               <p className="text-[11px] text-muted-foreground">
                 5 段 cron（分 时 日 月 周）；周 0/7=周日。如：0 9 * * * 每天 09:00
               </p>
+              {cronInvalid && (
+                <p className="text-[11px] text-error">cron 格式不正确（如：0 9 * * 1-5）</p>
+              )}
             </div>
           </div>
 
@@ -524,7 +545,7 @@ export function AutomationFormDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
             取消
           </Button>
-          <Button onClick={() => void submit()} disabled={saving}>
+          <Button onClick={() => void submit()} disabled={saving || cronInvalid}>
             {saving ? '保存中…' : editing ? '保存修改' : '创建任务'}
           </Button>
         </DialogFooter>

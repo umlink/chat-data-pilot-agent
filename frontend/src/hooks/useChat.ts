@@ -269,6 +269,17 @@ export function useChat() {
           text: `${current}\n\n⚠️ 连接中断：${lastError.message}`,
         })
         s.setBlockStatus(sessionId, msgId, textBlockId, 'failed')
+        // 追加可重试 error block：让「重试」入口对所有失败路径一致可达（与服务端 error 事件同形状）
+        s.upsertBlock(sessionId, msgId, {
+          id: uid(),
+          type: 'error',
+          status: 'completed',
+          content: {
+            code: 'CONNECTION_LOST',
+            message: `连接中断：${lastError.message}`,
+            retryable: true,
+          },
+        })
         break
       }
       // 零事件断线：等待后重连一次（等待期间被取消则退出）

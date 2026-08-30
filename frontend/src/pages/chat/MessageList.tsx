@@ -119,7 +119,9 @@ function MessageItem({
         {message.blocks.length === 0 ? (
           <p className="text-sm text-muted-foreground">…</p>
         ) : (
-          <div className="space-y-3">
+          // 仅流式生成中的消息容器播报持续更新（aria-live=polite 聚合播报，
+          // 历史消息保持 undefined，避免整页读屏轰炸）
+          <div className="space-y-3" aria-live={streaming ? 'polite' : undefined}>
             {message.blocks.map((b) => (
               <BlockViewer
                 key={b.id}

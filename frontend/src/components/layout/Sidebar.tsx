@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { NavLink, useNavigate } from 'react-router-dom'
-import { Activity, AlarmClock, Bell, CalendarClock, Database, FileText, LineChart, Pencil, Plus, Search, Settings2, Trash2 } from 'lucide-react'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
+import { Activity, AlarmClock, Bell, CalendarClock, Database, FileText, LineChart, MessageSquare, Pencil, Plus, ScrollText, Search, Settings2, Trash2 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { api, getUsername } from '@/lib/api'
 import { cancelStream } from '@/hooks/useChat'
 import { useChatStore } from '@/store/chatStore'
@@ -14,22 +16,29 @@ const NAV = [
   { to: '/notifications', label: '通知渠道', icon: Bell },
   { to: '/templates', label: '模板', icon: FileText },
   { to: '/stats', label: '用量统计', icon: Activity },
+  { to: '/logs', label: '日志', icon: ScrollText },
   { to: '/config', label: '管理后台', icon: Settings2, badge: true },
 ]
 
 /** 左侧 Sidebar 260px（docs/UI设计规范.md 3.13 侧边栏） */
 export function Sidebar() {
   const navigate = useNavigate()
+  const { pathname } = useLocation()
   const sessions = useChatStore((s) => s.sessions)
   const sessionId = useChatStore((s) => s.sessionId)
   const setSessions = useChatStore((s) => s.setSessions)
   const [keyword, setKeyword] = useState('')
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
+  const [deleteTarget, setDeleteTarget] = useState<SessionInfo | null>(null)
+  const [deleteError, setDeleteError] = useState('')
+  const [deleting, setDeleting] = useState(false)
   // 同步跟踪当前重命名会话：Escape 取消时输入框卸载触发 onBlur→commitRename，
   // 若仍读 state 会把「取消」误提交为「保存」，故用 ref 即时置空做兜底
   const renamingRef = useRef<string | null>(null)
   const username = getUsername() ?? '用户'
+  // 对话工作台激活态：/ 与 /session/:id 均高亮「对话」
+  const chatActive = pathname === '/' || pathname.startsWith('/session')
   const filtered = sessions.filter((s) =>
     s.title.toLowerCase().includes(keyword.toLowerCase()),
   )
@@ -62,15 +71,20 @@ export function Sidebar() {
     navigate(`/session/${id}`)
   }
 
-  const remove = async (id: string, title: string) => {
-    if (!window.confirm(`确定删除会话「${title}」吗？删除后对话记录将无法恢复。`)) return
-    cancelStream(id) // 仅取消被删除会话的流，不影响其它会话
+  const confirmDelete = async () => {
+    if (!deleteTarget) return
+    setDeleting(true)
+    setDeleteError('')
+    cancelStream(deleteTarget.id) // 仅取消被删除会话的流，不影响其它会话
     try {
-      await api.post('/sessions/delete', { id })
-      setSessions((prev) => prev.filter((x) => x.id !== id))
-      if (sessionId === id) navigate('/')
-    } catch {
-      /* ignore */
+      await api.post('/sessions/delete', { id: deleteTarget.id })
+      setSessions((prev) => prev.filter((x) => x.id !== deleteTarget.id))
+      if (sessionId === deleteTarget.id) navigate('/')
+      setDeleteTarget(null)
+    } catch (e) {
+      setDeleteError(e instanceof Error ? e.message : '删除失败')
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -122,6 +136,9 @@ export function Sidebar() {
           value={keyword}
           onChange={(e) => setKeyword(e.target.value)}
           placeholder="搜索对话…"
+          aria-label="搜索对话"
+          autoComplete="off"
+          spellCheck={false}
           className="h-[34px] w-full rounded-md border border-input bg-background pl-9 pr-3 text-[13px] outline-none focus:border-ring"
         />
       </div>
@@ -129,7 +146,9 @@ export function Sidebar() {
       {/* 会话列表 */}
       <nav className="flex-1 space-y-0.5 overflow-y-auto px-2 pb-2">
         {filtered.length === 0 && (
-          <div className="px-2 py-6 text-center text-xs text-muted-foreground">暂无会话</div>
+          <div className="px-2 py-6 text-center text-xs text-muted-foreground">
+            {keyword ? '无匹配会话' : '暂无会话，点击上方「新建对话」开始'}
+          </div>
         )}
         {filtered.map((s) => {
           const active = s.id === sessionId
@@ -188,7 +207,8 @@ export function Sidebar() {
               <button
                 onClick={(e) => {
                   e.stopPropagation()
-                  remove(s.id, s.title)
+                  setDeleteError('')
+                  setDeleteTarget(s)
                 }}
                 aria-label="删除会话"
                 className="flex size-[22px] items-center justify-center rounded-[4px] opacity-0 transition-opacity hover:bg-sidebar-accent group-hover:opacity-60 hover:opacity-100! focus-visible:opacity-100"
@@ -202,6 +222,17 @@ export function Sidebar() {
 
       {/* 底部导航 + 用户 */}
       <div className="shrink-0 border-t p-2">
+        {/* 对话工作台：/ 与 /session/:id 高亮 */}
+        <NavLink
+          to="/"
+          end
+          className={`flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] ${
+            chatActive ? 'bg-accent text-foreground' : 'text-foreground hover:bg-accent'
+          }`}
+        >
+          <MessageSquare size={16} className="shrink-0" />
+          <span className="flex-1">对话</span>
+        </NavLink>
         {NAV.map((item) => (
           <NavLink
             key={item.to}
@@ -231,6 +262,26 @@ export function Sidebar() {
           </div>
         </div>
       </div>
+
+      <Dialog open={deleteTarget !== null} onOpenChange={(v) => !v && setDeleteTarget(null)}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle className="text-[15px] font-semibold">删除会话</DialogTitle>
+          </DialogHeader>
+          <p className="text-[13px] text-muted-foreground">
+            确定删除会话「{deleteTarget?.title}」？删除后对话记录将无法恢复。
+          </p>
+          {deleteError && <p className="text-[13px] text-error" role="alert">{deleteError}</p>}
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setDeleteTarget(null)} disabled={deleting}>
+              取消
+            </Button>
+            <Button variant="destructive" size="sm" onClick={() => void confirmDelete()} disabled={deleting}>
+              {deleting ? '删除中…' : '删除'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </aside>
   )
 }

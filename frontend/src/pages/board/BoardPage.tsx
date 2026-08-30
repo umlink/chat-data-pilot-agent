@@ -36,6 +36,7 @@ function SavedChartCard({
   const [renaming, setRenaming] = useState(false);
   const [titleDraft, setTitleDraft] = useState(chart.title);
   const [savingName, setSavingName] = useState(false);
+  const [renameError, setRenameError] = useState("");
 
   const commitRename = async () => {
     const title = titleDraft.trim();
@@ -44,12 +45,15 @@ function SavedChartCard({
       return;
     }
     setSavingName(true);
+    setRenameError("");
     try {
       await api.post("/saved-charts/update", { id: chart.id, title });
       onRenamed(chart.id, title);
       setRenaming(false);
-    } catch {
-      setTitleDraft(chart.title); // 保存失败回退原标题
+    } catch (e) {
+      // 保存失败：回退原标题并给出可读错误提示，避免静默丢失
+      setRenameError(e instanceof Error ? e.message : "重命名失败，请稍后重试");
+      setTitleDraft(chart.title);
       setRenaming(false);
     } finally {
       setSavingName(false);
@@ -91,7 +95,7 @@ function SavedChartCard({
           onClick={() => setRenaming(true)}
           aria-label="重命名"
           title="重命名"
-          className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+          className="rounded p-1 text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/30"
         >
           <Pencil size={13} />
         </button>
@@ -99,11 +103,16 @@ function SavedChartCard({
           onClick={() => onDeleted(chart)}
           aria-label="取消收藏"
           title="取消收藏"
-          className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-error"
+          className="rounded p-1 text-muted-foreground outline-none hover:bg-accent hover:text-error focus-visible:ring-2 focus-visible:ring-ring/30"
         >
           <Trash2 size={13} />
         </button>
       </div>
+      {renameError && (
+        <p className="border-b px-4 py-1.5 text-xs text-error" role="alert">
+          {renameError}
+        </p>
+      )}
       <div className="p-4 pt-0">
         <ChartBlock
           content={chart.chart_content}

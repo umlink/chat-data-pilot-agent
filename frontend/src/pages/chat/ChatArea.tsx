@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { MessageSquare } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { api } from '@/lib/api'
@@ -33,6 +33,7 @@ export function ChatArea() {
   const setSessionMessages = useChatStore((s) => s.setSessionMessages)
   const { send } = useChat()
   const setDsList = useDataSourceStore((s) => s.setList)
+  const [createError, setCreateError] = useState('')
 
   // 当前会话的消息 + sending（多会话隔离）。
   // 注意：selector 必须返回稳定引用，不能用 `?? []`（每次渲染新数组 → 无限循环）
@@ -96,11 +97,12 @@ export function ChatArea() {
 
   if (!sessionId) {
     const createSession = async () => {
+      setCreateError('')
       try {
         const sid = await ensureSession()
         navigate(`/session/${sid}`)
-      } catch {
-        /* 忽略 */
+      } catch (e) {
+        setCreateError(e instanceof Error ? e.message : '新建对话失败，请稍后重试')
       }
     }
     return (
@@ -112,6 +114,7 @@ export function ChatArea() {
           <p className="text-lg text-foreground">你想分析什么数据？</p>
           <p className="mt-1 text-[13px] text-muted-foreground">新建对话后开始提问，或直接从示例开始</p>
         </div>
+        {createError && <p className="text-[13px] text-error" role="alert">{createError}</p>}
         <button onClick={createSession} className="btn btn-primary">
           新建对话
         </button>
