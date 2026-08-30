@@ -7,12 +7,14 @@ from fastapi import APIRouter
 
 from app.api import (
     auth,
+    automations,
     chat,
     config,
     datasources,
     export,
     llm_providers,
     logs,
+    notifications,
     reports,
     saved_charts,
     sessions,
@@ -36,4 +38,6 @@ api_router.include_router(templates.router)
 api_router.include_router(logs.router)
 api_router.include_router(saved_charts.router)
 api_router.include_router(reports.router)
+api_router.include_router(automations.router)
+api_router.include_router(notifications.router)
 api_router.include_router(stats.router)

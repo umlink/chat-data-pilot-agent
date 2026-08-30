@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react'
-import { Maximize2, Settings2, Star } from 'lucide-react'
+import { Maximize2, Send, Settings2, Star } from 'lucide-react'
 import { api } from '@/lib/api'
 import {
   Bar,
@@ -29,6 +29,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
+import { PushToChannelDialog } from './PushToChannelDialog'
 import { SqlQueryDialog } from './SqlQueryDialog'
 
 interface Props {
@@ -820,6 +821,7 @@ function ChartToolbar({
   showSql,
   saveState,
   onSave,
+  onPush,
 }: {
   chartRef: React.RefObject<HTMLDivElement | null>
   title: string
@@ -829,6 +831,7 @@ function ChartToolbar({
   showSql: boolean
   saveState?: 'idle' | 'saving' | 'saved' | 'error'
   onSave?: () => void
+  onPush?: () => void
 }) {
   const { downloadSvg, downloadPng, downloadPdf } = useChartExport(chartRef, title)
   return (
@@ -857,6 +860,16 @@ function ChartToolbar({
               saveState === 'error' && 'text-error',
             )}
           />
+        </button>
+      )}
+      {onPush && (
+        <button
+          onClick={onPush}
+          className="rounded bg-background/80 px-1.5 py-1 text-muted-foreground hover:text-foreground"
+          title="推送到通知渠道"
+          aria-label="推送到通知渠道"
+        >
+          <Send className="size-3.5" />
         </button>
       )}
       <button
@@ -923,6 +936,7 @@ export function ChartBlock({ content, savable = false, sessionId, showTitle = tr
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [sqlOpen, setSqlOpen] = useState(false)
   const [fullscreenOpen, setFullscreenOpen] = useState(false)
+  const [pushOpen, setPushOpen] = useState(false)
   const [settings, setSettings] = useState<ChartSettings>(DEFAULT_SETTINGS)
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const effective: ChartContent = useMemo(
@@ -982,6 +996,7 @@ export function ChartBlock({ content, savable = false, sessionId, showTitle = tr
           showSql={!!content.query}
           saveState={saveState}
           onSave={savable ? () => void saveToBoard() : undefined}
+          onPush={() => setPushOpen(true)}
         />
         <ChartPanel content={effective} colors={colors} />
       </div>
@@ -998,6 +1013,12 @@ export function ChartBlock({ content, savable = false, sessionId, showTitle = tr
       {content.query ? (
         <SqlQueryDialog sql={content.query} open={sqlOpen} onOpenChange={setSqlOpen} />
       ) : null}
+      <PushToChannelDialog
+        open={pushOpen}
+        onOpenChange={setPushOpen}
+        subject={effective.title || '图表摘要'}
+        body={`图表「${effective.title || '未命名图表'}」\n类型：${effective.chart_type}\n数据点：${(effective.series?.[0]?.x ?? []).length}`}
+      />
       <ChartFullscreenDialog
         content={effective}
         colors={colors}

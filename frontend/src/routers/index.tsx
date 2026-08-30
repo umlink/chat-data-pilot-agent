@@ -13,6 +13,14 @@ const SavedChartsPage = lazy(() =>
   import('@/components/dashboard/SavedChartsPage').then((m) => ({ default: m.SavedChartsPage })),
 )
 const ReportsPage = lazy(() => import('@/components/reports/ReportsPage').then((m) => ({ default: m.ReportsPage })))
+const AutomationPage = lazy(() =>
+  import('@/components/automation/AutomationPage').then((m) => ({ default: m.AutomationPage })),
+)
+const NotificationChannelsPage = lazy(() =>
+  import('@/components/notification/NotificationChannelsPage').then((m) => ({
+    default: m.NotificationChannelsPage,
+  })),
+)
 const TokenStatsPage = lazy(() =>
   import('@/components/stats/TokenStatsPage').then((m) => ({ default: m.TokenStatsPage })),
 )
@@ -58,6 +66,22 @@ export const router = createBrowserRouter([
         element: (
           <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">加载中…</div>}>
             <ReportsPage />
+          </Suspense>
+        ),
+      },
+      {
+        path: 'automations',
+        element: (
+          <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">加载中…</div>}>
+            <AutomationPage />
+          </Suspense>
+        ),
+      },
+      {
+        path: 'notifications',
+        element: (
+          <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">加载中…</div>}>
+            <NotificationChannelsPage />
           </Suspense>
         ),
       },

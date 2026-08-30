@@ -249,6 +249,9 @@ html, body, #root {
     @apply bg-muted-foreground/70;
     animation: pulse-dot 1.4s ease-in-out infinite;
   }
+  .status-dot.idle {
+    @apply bg-muted-foreground/50;
+  }
 
   .badge-primary {
     @apply bg-primary text-primary-foreground;

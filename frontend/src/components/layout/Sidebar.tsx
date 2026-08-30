@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
-import { Activity, CalendarClock, Database, FileText, LineChart, Pencil, Plus, Search, Settings2, Trash2 } from 'lucide-react'
+import { Activity, AlarmClock, Bell, CalendarClock, Database, FileText, LineChart, Pencil, Plus, Search, Settings2, Trash2 } from 'lucide-react'
 import { api, getUsername } from '@/lib/api'
 import { cancelStream } from '@/hooks/useChat'
 import { useChatStore } from '@/store/chatStore'
@@ -10,6 +10,8 @@ const NAV = [
   { to: '/datasources', label: '数据源', icon: Database },
   { to: '/board', label: '我的看板', icon: LineChart },
   { to: '/reports', label: '定时报告', icon: CalendarClock },
+  { to: '/automations', label: '定时任务', icon: AlarmClock },
+  { to: '/notifications', label: '通知渠道', icon: Bell },
   { to: '/templates', label: '模板', icon: FileText },
   { to: '/stats', label: '用量统计', icon: Activity },
   { to: '/config', label: '管理后台', icon: Settings2, badge: true },

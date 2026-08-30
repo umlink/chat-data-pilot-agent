@@ -1,8 +1,9 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { ArrowDown, ArrowUp, ArrowUpDown, Search } from 'lucide-react'
+import { ArrowDown, ArrowUp, ArrowUpDown, Search, Send } from 'lucide-react'
 import { downloadFile } from '@/lib/api'
 import type { TableColumn, TableContent } from '@/types/message'
+import { PushToChannelDialog } from './PushToChannelDialog'
 import { SqlQueryDialog } from './SqlQueryDialog'
 
 interface Props {
@@ -52,6 +53,7 @@ export function TableBlock({ content }: Props) {
   const [exporting, setExporting] = useState<string | null>(null)
   const [exportError, setExportError] = useState('')
   const [sqlOpen, setSqlOpen] = useState(false)
+  const [pushOpen, setPushOpen] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   // 滚动容器实测宽度：列宽需「至少占满容器」，否则 fixed 布局会把 table 的
   // min-width 拉伸量摊给表头列，而绝对定位的虚拟行 td 宽度固定 → 表头与数据列错位
@@ -176,6 +178,16 @@ export function TableBlock({ content }: Props) {
               {exporting === fmt ? '导出中…' : fmt.toUpperCase()}
             </button>
           ))}
+          <button
+            onClick={() => setPushOpen(true)}
+            disabled={sorted.length === 0}
+            aria-label="推送到通知渠道"
+            title="推送到通知渠道"
+            className="inline-flex items-center gap-1 rounded border border-input px-2 py-1 text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Send size={11} />
+            推送
+          </button>
         </div>
       </div>
 
@@ -286,6 +298,14 @@ export function TableBlock({ content }: Props) {
       {content.query ? (
         <SqlQueryDialog sql={content.query} open={sqlOpen} onOpenChange={setSqlOpen} />
       ) : null}
+      <PushToChannelDialog
+        open={pushOpen}
+        onOpenChange={setPushOpen}
+        subject="表格数据"
+        body={`表格结果摘要\n行数：${sorted.length}${
+          content.total > rows.length ? `（数据源共 ${content.total} 行，已截断）` : ''
+        }`}
+      />
     </div>
   )
 }

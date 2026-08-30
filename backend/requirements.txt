@@ -24,3 +24,4 @@ httpx>=0.27
 openai>=1.40
 anthropic>=0.34
 tiktoken>=0.7
+croniter>=2.0

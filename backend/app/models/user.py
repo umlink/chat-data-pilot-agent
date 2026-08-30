@@ -27,6 +27,15 @@ class User(Base):
     scheduled_reports = relationship(
         "ScheduledReport", back_populates="user", cascade="all, delete-orphan"
     )
+    automations = relationship(
+        "Automation", back_populates="user", cascade="all, delete-orphan"
+    )
+    notification_channels = relationship(
+        "NotificationChannel", back_populates="user", cascade="all, delete-orphan"
+    )
+    notification_logs = relationship(
+        "NotificationLog", back_populates="user", cascade="all, delete-orphan"
+    )
 
 
 class Session(Base):

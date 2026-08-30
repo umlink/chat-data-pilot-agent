@@ -1,9 +1,11 @@
-"""后台调度器：数据源心跳检测 + 定时报告轮询（随应用 lifespan 启停）。
+"""后台调度器：数据源心跳检测 + 定时报告轮询 + 自动化任务轮询（随应用 lifespan 启停）。
 
 - 心跳（PRD 3.2.3）：每 DATASOURCE_CHECK_INTERVAL 秒对全部数据库型数据源做一次
   连接检测并写回 status/last_checked_at/last_error/server_version；文件型跳过。
 - 报告：每 tick 轮询 enabled 且 next_run_at<=now 的报告，逐个异步执行
   （执行逻辑与失败收敛在 report_service.run_report，这里只做调度与容错）。
+- 自动化：每 tick 轮询 enabled 且 next_run_at<=now 的 automations，逐个异步执行
+  （执行逻辑与失败收敛在 automation_service.run_automation，这里只做调度与容错）。
 - 容错：任何一步异常只记日志，绝不杀死循环（对齐 Worker 的消费循环策略）。
 """
 import asyncio
@@ -15,8 +17,10 @@ from sqlalchemy import select
 
 from app.core.database import SessionFactory
 from app.models.analytics import ScheduledReport
+from app.models.automation import Automation
 from app.models.datasource import Datasource
 from app.schemas.datasource import FILE_TYPES
+from app.services.automation_service import run_automation
 from app.services.data_service import DataService, decrypt_config
 from app.services.report_service import run_report
 
@@ -65,6 +69,7 @@ class Scheduler:
                     await self._check_datasources()
                     next_ds_check = now + self.datasource_check_seconds
                 await self._run_due_reports()
+                await self._run_due_automations()
             except asyncio.CancelledError:
                 raise
             except Exception:
@@ -149,3 +154,35 @@ class Scheduler:
         except Exception:
             # run_report 内部已收敛业务异常；这里兜底防御记录类异常
             logger.exception("定时报告执行意外失败 report=%s", report_id)
+
+    # ---------- 自动化任务 ----------
+
+    async def _run_due_automations(self) -> None:
+        """执行所有到期的自动化任务（并发触发；执行体自身保证状态收敛与异常兜底）。"""
+        now = datetime.datetime.now(datetime.timezone.utc)
+        try:
+            async with SessionFactory() as db:
+                due = (
+                    await db.scalars(
+                        select(Automation.id).where(
+                            Automation.enabled.is_(True),
+                            Automation.next_run_at.is_not(None),
+                            Automation.next_run_at <= now,
+                        )
+                    )
+                ).all()
+        except Exception:
+            logger.exception("自动化轮询：读取到期任务失败")
+            return
+        for automation_id in due:
+            logger.info("自动化任务到期执行：%s", automation_id)
+            # 每个任务独立协程：单个任务卡死/失败不影响其他任务与本轮调度
+            asyncio.create_task(self._run_automation_safely(automation_id))
+
+    @staticmethod
+    async def _run_automation_safely(automation_id) -> None:
+        try:
+            await run_automation(automation_id)
+        except Exception:
+            # run_automation 内部已收敛业务异常；这里兜底防御记录类异常
+            logger.exception("自动化任务执行意外失败 automation=%s", automation_id)
