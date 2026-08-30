@@ -1,0 +1,56 @@
+# 本地基础设施编排（可选）：为初次使用/本地开发一键拉起 PostgreSQL / Redis / MinIO。
+# 与根目录 .env.example 的默认值对齐；数据持久化在命名卷中，可随时 down/up。
+# 用法：docker compose -f docker-compose.infra.yml up -d
+# 应用层部署仍使用 docker-compose.yml（远程基础设施模式）。
+name: datapilot-infra
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: datapilot
+      POSTGRES_USER: datapilot
+      POSTGRES_PASSWORD: datapilot
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U datapilot -d datapilot"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: datapilot
+      MINIO_ROOT_PASSWORD: datapilot-minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
