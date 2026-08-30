@@ -25,9 +25,10 @@
 └── frontend/          前端（React 19 + Vite + Tailwind v4）
     └── src/
         ├── routers/   路由表（react-router，由 root radial 统一出口）
-        ├── components/ 组件（按 area 分子目录；通用组件在 common/）
+        ├── pages/     路由级页面（页面 + 私有子组件按路由目录组织）
+        ├── components/ 跨页面共享组件（ui / layout / common / chat 共享渲染等）
         ├── store/     zustand 状态
-        ├── hooks/     hooks
+        ├── hooks/     跨页面共享 hooks（页面私有 hooks 随页放 pages/<route>/）
         ├── lib/       api 客户端 / SSE 客户端
         └── types/     前后端共享契约类型（message.ts）
 ```
@@ -120,8 +121,11 @@
 
 ### 5.2 结构与组件
 - 组件一律具名导出（`export function X`），禁止默认导出组件；props 用 `interface Props`。
-- 目录：`components/<area>/`（chat / layout / auth / datasource / config / logs / common）；页面级组件放 `components/*` 顶层，路由表只放在 `routers/`。
-- 组件保持短小（< ~200 行）；可复用逻辑抽 `hooks/`；跨页面共享状态进 `store/`（zustand）。
+- 目录：
+  - 页面按路由级收在 `pages/<route>/`，页面入口由 `routers/` 唯一引用，命名与路由/领域概念一致（如 `pages/board/BoardPage.tsx`、`pages/datasources/DataSourcePage.tsx`、`pages/chat/ChatArea.tsx`、`pages/notifications/NotificationChannelsPage.tsx`）；页面私有子组件与私有 hooks 随页同目录。
+  - `components/` 只放跨页面共享组件（`ui/` shadcn 原语、`layout/` 外壳、`common/` 通用含 `Placeholder`/`MaskedInput`、`chat/` 的共享渲染 `ChartBlock/TableBlock/SqlQueryDialog/PushToChannelDialog/SqlHistoryDialog`）。
+  - 路由表只放在 `routers/`；禁止 `components/` 反向引用 `@/pages/...`。
+- 组件保持短小（< ~200 行）；跨页面共享逻辑抽 `hooks/`（如 `useChat` 供 AppShell/Sidebar 共用），页面私有 hooks 随页放 `pages/<route>/`；跨页面共享状态进 `store/`（zustand）。
 - 列表/大表用虚拟化（@tanstack/react-virtual）与 memo，禁止整表重渲染。
 
 ### 5.3 样式（Tailwind v4）
@@ -160,6 +164,10 @@
 ## 7. 环境与运行
 
 - 基础设施全部远程（PostgreSQL / Redis / MinIO，见根目录 `.env`，勿提交、勿外泄）。
+- 表结构由 Alembic 管理（初始迁移 `alembic/versions/*_initial_schema.py` 已建库并 `stamp` 到 head）。
+  - 首次/升级库：`cd backend && ./venv/bin/alembic upgrade head`（生产部署前必须执行，禁止依赖 `create_all`）。
+  - 校验漂移：`./venv/bin/alembic check`（应输出 `No new upgrade operations detected.`）。
+  - schema 变更：改 `app/models/` → `./venv/bin/alembic revision --autogenerate -m "..."` → 人工核对 → `upgrade head`。
 - 后端启动：`cd backend && ./venv/bin/uvicorn app.main:app --reload --port 8010`；首次需 `python3 -m venv venv && ./venv/bin/pip install -r requirements.txt`。
 - 前端启动：`cd frontend && pnpm dev`（Vite 默认 5173，CORS 已含）。
 - 自测命令速查（后端在 8010 起时）：

@@ -1,8 +1,7 @@
 """自动化任务服务：参数注入 / cron 计算 / 任务执行（结果快照落库）。
 
 契约见 docs/定时任务与第三方通知方案.md 2.3-2.6。
-本期（Automation 骨架）不含通知发送：notification 字段仅存储，执行不触发通知
-（通知接入在后续模块）；不含自然语言解析（parse 在后续模块）。
+已含全链路：on_success/on_failure 通知（见 notification_service）与自然语言创建（parse_automation）。
 """
 import asyncio
 import datetime
