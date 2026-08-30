@@ -56,6 +56,11 @@ def build_chart(table: dict[str, Any], chart_type: str, dimension: str,
         raise ChartError(f"dimension 列不存在: {dimension}")
     if not rows:
         raise ChartError("数据为空，无法生成图表")
+    if not measures:
+        raise ChartError("measures 不能为空，至少需要 1 个 measure")
+    for m in measures:
+        if not m.get("column"):
+            raise ChartError("measure 缺少 column 字段")
     if chart_type == "pie" and len(measures) > 1:
         raise ChartError("pie 图至多支持 1 个 measure")
 

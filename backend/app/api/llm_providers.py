@@ -17,7 +17,7 @@ from uuid import UUID
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
@@ -163,9 +163,20 @@ async def set_default(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     row = await _get_owned(db, provider_id)
-    rows = await _list_all(db)
-    for r in rows:
-        r.is_default = r.id == row.id
+    # 注意：is_default 存在部分唯一索引 uq_llm_providers_default
+    # （WHERE is_default=true 全表仅一行）。若用循环逐行改并一次 commit，
+    # SQLAlchemy 先置新行为 true 时旧行仍为 true，会触发唯一约束 → 500。
+    # 因此分两步：先清空其余行为 false，再置目标行为 true。
+    await db.execute(
+        update(LlmProvider)
+        .where(LlmProvider.id != row.id)
+        .values(is_default=False)
+    )
+    await db.execute(
+        update(LlmProvider)
+        .where(LlmProvider.id == row.id)
+        .values(is_default=True)
+    )
     await db.commit()
     await db.refresh(row)
     return ApiResponse(data=_out(row), message="已设为默认供应商")

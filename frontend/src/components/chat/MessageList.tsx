@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { RefObject } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { Bot, RefreshCw, ThumbsDown, ThumbsUp } from 'lucide-react'
@@ -33,7 +33,8 @@ function FeedbackButtons({ messageId }: { messageId: string }) {
   }
 
   return (
-    <div className="mt-2 flex items-center gap-1 text-muted-foreground">
+    // 无独立外边距：与「重新生成」按钮同处一个 items-center 行，由外层统一控制间距
+    <div className="flex items-center gap-0.5 text-muted-foreground">
       <button
         onClick={() => void rate(1)}
         disabled={pending}
@@ -62,13 +63,14 @@ function FeedbackButtons({ messageId }: { messageId: string }) {
 function MessageItem({
   message,
   index,
-  sending,
+  streaming,
   onRetry,
   regenerate,
 }: {
   message: Message
   index: number
-  sending: boolean
+  /** 当前这条消息是否正在流式生成（仅最后一条 assistant 真在生成，历史消息为 false） */
+  streaming: boolean
   onRetry?: () => void
   regenerate: (assistantIndex: number) => void
 }) {
@@ -84,10 +86,12 @@ function MessageItem({
   }
 
   const usage = message.metadata.usage as Record<string, unknown> | undefined
-  const isTyping =
-    sending && message.blocks.length > 0 && message.blocks.every((b) => b.status === 'running')
   const hasError = message.blocks.some((b) => b.status === 'failed' || b.type === 'error')
-  // 流结束（非 running 且非空）才显示反馈按钮
+  // 生成中 = 该条消息处于流式生成：只要 streaming 为 true 就一直展示头像右侧的加载点。
+  // 注意不能依赖 blocks.every(status==='running')——首个 text block 先 completed 时
+  // （后续图表/表格仍在流式生成），every 会变 false 导致 loading 提前消失。
+  const isTyping = streaming && !hasError
+  // 流结束（非正在生成且无错误）才显示反馈按钮
   const showFeedback = !isTyping && message.blocks.length > 0 && !hasError
 
   return (
@@ -133,7 +137,7 @@ function MessageItem({
             <FeedbackButtons messageId={message.id} />
             <button
               onClick={() => regenerate(index)}
-              disabled={sending}
+              disabled={streaming}
               aria-label="重新生成"
               title="重新生成"
               className="flex items-center gap-1 rounded p-1 text-[11px] transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
@@ -186,6 +190,16 @@ export function MessageList({
     onSizeChange?.()
   }, [totalSize, onSizeChange])
 
+  /** 当前正在流式生成的 assistant 消息 index：sending 时最后一条 assistant 才在生成。
+   *  会话级 sending 会命中历史消息，需用「最后一条 assistant」精确收敛，避免历史消息误显示 loading。 */
+  const streamingAssistantIndex = useMemo(() => {
+    if (!sending) return -1
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === 'assistant') return i
+    }
+    return -1
+  }, [messages, sending])
+
   /** 重新生成：重发与该 assistant 配对的最近用户消息（保留原回复，PRD 5.1）。
    *  优先向前找；若 assistant 位于消息头部（created_at 相同导致顺序倒置等异常），向后兜底。 */
   const regenerate = (assistantIndex: number) => {
@@ -222,7 +236,7 @@ export function MessageList({
             <MessageItem
               message={m}
               index={vi.index}
-              sending={sending}
+              streaming={vi.index === streamingAssistantIndex}
               onRetry={onRetry}
               regenerate={regenerate}
             />

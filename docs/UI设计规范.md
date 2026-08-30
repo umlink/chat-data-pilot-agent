@@ -32,7 +32,7 @@
 | state-warning / -bg | oklch(0.75 0.18 75) / oklch(0.95 0.06 80) | `text-warning` | 确认、风险 |
 | state-error / -bg | oklch(0.577 0.245 27.325) / oklch(0.95 0.05 25) | `text-error` `bg-error-bg` | 失败、负增长 |
 | state-info / -bg | oklch(0.65 0.18 230) / oklch(0.94 0.05 230) | `text-info` | 进行中 |
-| chart-1..5（橙色阶） | oklch(0.837 0.128 66.29) → oklch(0.47 0.157 37.304) | `text-chart-1` 等 | 图表主色 |
+| chart-1..5（橙色阶） | oklch(0.72 0.19 55) → oklch(0.45 0.13 36) | `text-chart-1` 等 | 折线/柱状系列主色；饼图另用多色相调色板 |
 | 代码块 | bg oklch(0.145 0 0) / fg oklch(0.92) / header oklch(0.205) / border oklch(0.27) / lang bg oklch(0.25) / lang fg oklch(0.7) | `bg-code-bg` `text-code-fg` 等 | SQL/代码 |
 | 用户气泡 | bg oklch(0.205 0 0) / fg oklch(0.985 0 0) | `bg-user-bubble text-user-bubble-fg` | 聊天 |
 
@@ -114,7 +114,7 @@
 外层 `rounded-lg border overflow-hidden text-xs`；th：`bg-muted px-3 py-2 text-left text-[11px] uppercase tracking-wide text-muted-foreground`；td：`px-3 py-2 border-b`；末行去 border。脚注：`text-[11px]` 含「导出 CSV」下划线链接。正负增长用 `text-success` / `text-error`。
 
 ### 3.7 图表卡片
-`.card` + `p-4`；标题 `text-[13px] font-semibold`；柱状主色渐变橙 400→600；坐标轴 9px muted；图例 11px。M4 由 recharts（shadcn/ui Chart 封装）渲染，颜色取 `--chart-1..5`。
+`.card` + `p-4`；标题 `text-[13px] font-semibold`；柱状主色渐变取 `--chart-1 → --chart-2`（深橙渐深）；坐标轴 9px muted；图例 11px。M4 由 recharts（shadcn/ui Chart 封装）渲染，颜色取 `--chart-1..5`（折线/柱状深橙色阶；饼图扇区用多色相调色板）。
 
 ### 3.8 引用卡 `.quote-card`
 `bg-muted border-l-4 border-primary rounded-md p-3 text-sm leading-[1.6]`（用于「用户输入」回显、澄清说明）。

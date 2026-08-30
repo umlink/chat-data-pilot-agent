@@ -10,6 +10,14 @@
 
 DataPilotAgent 将「用一句话提问」转化为「可回溯的分析结果」：LLM Agent 自动生成并执行 SQL、在沙箱中运行 Python 分析、渲染交互式图表，每一步的 SQL、数据来源全程可查，支持一键收藏到看板并导出 PNG / SVG / PDF。
 
+## 界面预览
+
+| 登录页 | 对话分析 | 图表可视化 |
+|---|---|---|
+| ![登录页](docs/login.png) | ![对话分析](docs/chat.png) | ![图表可视化](docs/chart.png) |
+| 柱状图 | 系统配置 | Token 用量统计 |
+| ![柱状图](docs/zhuzhuang.png) | ![系统配置](docs/system.png) | ![Token 用量统计](docs/tokens.png) |
+
 ## 功能特性
 
 - **自然语言对话分析**：SSE 流式响应，文本 / SQL / 表格 / 图表以 Block 结构分块渲染，支持中断与多会话管理
@@ -64,6 +72,8 @@ docker compose -f docker-compose.infra.yml up -d
 ```
 
 模板中的默认值与该编排对齐，本地起步无需改动即可连通；使用远程实例时，将 `.env` 中的连接信息替换为实际地址即可。
+
+> ⚠️ **启动前务必先改 `SECRET_KEY`**：后端在 `ENABLE_AUTH=true`（默认）且 `SECRET_KEY` 仍为 `change-me-in-prod` 时会拒绝启动（安全闸）。请执行 `openssl rand -hex 32` 生成强随机值写入 `.env`。
 
 ### 2. 启动后端
 

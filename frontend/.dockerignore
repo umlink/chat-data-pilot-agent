@@ -1,0 +1,11 @@
+node_modules
+dist
+dist-ssr
+*.local
+*.log
+npm-debug.log*
+pnpm-debug.log*
+.git
+.vscode
+.idea
+.DS_Store

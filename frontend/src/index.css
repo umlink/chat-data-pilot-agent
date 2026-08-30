@@ -25,11 +25,12 @@
   --border: oklch(0.91 0 0);
   --input: oklch(0.91 0 0);
   --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.837 0.128 66.29);
-  --chart-2: oklch(0.705 0.213 47.604);
-  --chart-3: oklch(0.646 0.222 41.116);
-  --chart-4: oklch(0.553 0.195 38.402);
-  --chart-5: oklch(0.47 0.157 37.304);
+  /* 图表主色：橙色阶（折线/柱状用，深浅区分系列；饼图另用 PIE_PALETTE 多色相） */
+  --chart-1: oklch(0.72 0.19 55);
+  --chart-2: oklch(0.65 0.2 50);
+  --chart-3: oklch(0.58 0.19 45);
+  --chart-4: oklch(0.51 0.16 40);
+  --chart-5: oklch(0.45 0.13 36);
   --radius: 0.5rem;
   --sidebar: oklch(1 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
@@ -157,11 +158,11 @@ html, body, #root {
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.837 0.128 66.29);
-  --chart-2: oklch(0.705 0.213 47.604);
-  --chart-3: oklch(0.646 0.222 41.116);
-  --chart-4: oklch(0.553 0.195 38.402);
-  --chart-5: oklch(0.47 0.157 37.304);
+  --chart-1: oklch(0.78 0.19 55);
+  --chart-2: oklch(0.7 0.2 50);
+  --chart-3: oklch(0.63 0.19 45);
+  --chart-4: oklch(0.56 0.16 40);
+  --chart-5: oklch(0.49 0.13 36);
   --sidebar: oklch(0.205 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376);

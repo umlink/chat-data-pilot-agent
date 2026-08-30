@@ -43,13 +43,24 @@ interface Props {
   reserveToolbarTop?: boolean
 }
 
-// 图表主色固定取语义 token（docs/UI设计规范.md 1.1 chart-1..5 橙色阶）
+// 折线/柱状等系列主色取语义 token（docs/UI设计规范.md 1.1 chart-1..5 深橙色阶）
 const TOKENS = [
   'var(--chart-1)',
   'var(--chart-2)',
   'var(--chart-3)',
   'var(--chart-4)',
   'var(--chart-5)',
+]
+
+// 饼图专用多色相调色板（绿 / 蓝 / 紫 / 橙 / 玫红 / 青）：
+// 占比图需扇区之间强区分，不随折线/柱状的橙色阶，否则仍是同色深浅。
+const PIE_PALETTE = [
+  'oklch(0.62 0.17 150)',
+  'oklch(0.58 0.19 250)',
+  'oklch(0.58 0.22 295)',
+  'oklch(0.7 0.18 65)',
+  'oklch(0.58 0.22 20)',
+  'oklch(0.62 0.14 200)',
 ]
 
 /** 本地图表配置覆盖（chart 契约 6.2 为终态无更新字段，仅展示层生效，不写回） */
@@ -63,12 +74,24 @@ interface ChartSettings {
 
 const DEFAULT_SETTINGS: ChartSettings = { seriesColors: [] }
 
-/** 系列扁平化为 recharts 行：[{ x, [seriesName]: y }] */
-function toRows(series: ChartSeries[]): Record<string, string | number>[] {
+/** 系列扁平化为 recharts 行：[{ x, [seriesName]: y }]
+ * 注意：y 可能为 NaN/null/数字字符串（后端聚合缺失或透传异常）。NaN 会破坏 monotone 曲线导致断线，
+ * 这里统一归一为 null（保留缺失语义）；能数值化的字符串转 number，避免折线拿到字符串无法连线。 */
+function toRows(series: ChartSeries[]): Record<string, string | number | null>[] {
   const cats = series[0]?.x ?? []
   return cats.map((cat, i) => {
-    const row: Record<string, string | number> = { x: cat }
-    for (const s of series) row[s.name] = s.y[i] ?? 0
+    const row: Record<string, string | number | null> = { x: cat }
+    for (const s of series) {
+      const v = s.y[i]
+      if (v == null) {
+        row[s.name] = null
+      } else if (typeof v === 'number') {
+        row[s.name] = Number.isFinite(v) ? v : null
+      } else {
+        const n = Number(v)
+        row[s.name] = Number.isFinite(n) ? n : null
+      }
+    }
     return row
   })
 }
@@ -180,6 +203,7 @@ function LinePanel({
             strokeWidth={2}
             dot={{ r: 3, strokeWidth: 0 }}
             activeDot={{ r: 5 }}
+            connectNulls
           />
         ))}
         {series.length >= 2 && <ChartLegend content={<ChartLegendContent />} />}
@@ -202,13 +226,16 @@ function PiePanel({
     return <div className="py-10 text-center text-[13px] text-muted-foreground">暂无图表数据</div>
   }
   const data = s.x.map((cat, i) => ({ x: cat, value: s.y[i] ?? 0 }))
+  // 饼图取色按「扇区（数据项）」遍历，用独立多色相 PIE_PALETTE：
+  // 用户自定义色板优先；不足时循环 PIE_PALETTE，保证每个扇区颜色可以不同。
+  const sectors = data.map((_, i) => colors[i] ?? PIE_PALETTE[i % PIE_PALETTE.length])
   return (
     <ChartContainer config={buildConfig([s])} className={chartClass}>
       <PieChart accessibilityLayer>
         <ChartTooltip content={<ChartTooltipContent indicator="dot" />} />
         <Pie data={data} dataKey="value" nameKey="x" innerRadius={48} outerRadius={76} paddingAngle={2} strokeWidth={0}>
-          {data.map((_, i) => (
-            <Cell key={i} fill={colors[i % colors.length]} />
+          {sectors.map((c, i) => (
+            <Cell key={i} fill={c} />
           ))}
         </Pie>
         <ChartLegend content={<ChartLegendContent />} />
@@ -227,17 +254,22 @@ function ScatterPanel({
   chartClass?: string
 }) {
   const { series, x_label } = content
+  // 散点 x 可能是数值（相关分析）或类别（分组散点）：全数值才用数值轴，否则类别轴，
+  // 避免 type="number" 拿到字符串导致散点无法定位
+  const cats = series[0]?.x ?? []
+  const numericX = cats.length > 0 && cats.every((v) => Number.isFinite(Number(v)))
   return (
     <ChartContainer config={buildConfig(series)} className={chartClass}>
       <ScatterChart accessibilityLayer margin={{ top: 4, right: 8, bottom: 0, left: -8 }}>
         <CartesianGrid vertical={false} />
         <XAxis
-          type="number"
+          type={numericX ? 'number' : 'category'}
           dataKey="x"
           tickLine={false}
           axisLine={false}
           tick={{ fontSize: 9 }}
           dy={6}
+          allowDuplicatedCategory={false}
           label={x_label ? { value: x_label, position: 'insideBottom', offset: -1, fontSize: 9 } : undefined}
         />
         <YAxis type="number" tickLine={false} axisLine={false} tick={{ fontSize: 9 }} width={34} />
@@ -254,11 +286,20 @@ function ScatterPanel({
 /** 热力图：recharts 无原生支持，用 SVG rect 网格渲染（保持与导出管道同源） */
 const HEAT_CELL = 26
 const HEAT_X_LABEL_H = 20
+// 热力图渐变（低→高，橙色阶）：与其他单一色图表统一用橙色系，靠深浅区分数值强弱，
+// 色相固定在 ~55 与 --chart-N 保持一致，避免多色相/青绿带偏「低→高」的连续观感。
+const HEAT_GRADIENT = [
+  'oklch(0.95 0.06 55)',
+  'oklch(0.84 0.11 52)',
+  'oklch(0.72 0.17 52)',
+  'oklch(0.58 0.19 48)',
+  'oklch(0.44 0.15 40)',
+]
 
 function heatColor(value: number, min: number, max: number): string {
-  if (max <= min) return TOKENS[2]
+  if (max <= min) return HEAT_GRADIENT[2]
   const t = Math.min(1, Math.max(0, (value - min) / (max - min)))
-  return TOKENS[Math.min(TOKENS.length - 1, Math.floor(t * TOKENS.length))]
+  return HEAT_GRADIENT[Math.min(HEAT_GRADIENT.length - 1, Math.floor(t * HEAT_GRADIENT.length))]
 }
 
 function HeatmapPanel({ content }: { content: ChartContent }) {
@@ -342,7 +383,7 @@ function HeatmapPanel({ content }: { content: ChartContent }) {
       {/* 色阶图例（低 → 高） */}
       <div className="mt-2 flex items-center gap-1.5 text-[10px] text-muted-foreground">
         <span>低</span>
-        {TOKENS.map((t) => (
+        {HEAT_GRADIENT.map((t) => (
           <span key={t} className="size-3 rounded-sm" style={{ background: t }} />
         ))}
         <span>高</span>
@@ -724,7 +765,10 @@ function ChartSettingsDialog({
           <div className="grid gap-1.5">
             <Label>系列颜色</Label>
             <div className="grid max-h-40 gap-1.5 overflow-y-auto pr-1">
-              {content.series.map((s, i) => {
+              {(content.series ?? []).length === 0 ? (
+                <p className="text-xs text-muted-foreground">该图表类型暂不支持系列配色</p>
+              ) : null}
+              {(content.series ?? []).map((s, i) => {
                 const active = draft.seriesColors[i] ?? TOKENS[i % TOKENS.length]
                 return (
                   <div key={`${s.name}-${i}`} className="flex items-center gap-2">

@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { ArrowDown, ArrowUp, ArrowUpDown, Search } from 'lucide-react'
 import { downloadFile } from '@/lib/api'
@@ -53,17 +53,34 @@ export function TableBlock({ content }: Props) {
   const [exportError, setExportError] = useState('')
   const [sqlOpen, setSqlOpen] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
+  // 滚动容器实测宽度：列宽需「至少占满容器」，否则 fixed 布局会把 table 的
+  // min-width 拉伸量摊给表头列，而绝对定位的虚拟行 td 宽度固定 → 表头与数据列错位
+  const [containerW, setContainerW] = useState(0)
 
-  const widths = useMemo(
-    () =>
-      columns.map((c) => {
-        const vals = rows
-          .slice(0, 50)
-          .map((r) => (r && c.key in r ? String(r[c.key] ?? '') : ''))
-        return colWidth(c, vals)
-      }),
-    [columns, rows],
-  )
+  // useLayoutEffect：首次绘制前完成测量，避免首帧按未缩放列宽渲染的错位闪动
+  useLayoutEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const ro = new ResizeObserver(() => setContainerW(el.clientWidth))
+    ro.observe(el)
+    setContainerW(el.clientWidth)
+    return () => ro.disconnect()
+  }, [])
+  const widths = useMemo(() => {
+    const base = columns.map((c) => {
+      const vals = rows
+        .slice(0, 50)
+        .map((r) => (r && c.key in r ? String(r[c.key] ?? '') : ''))
+      return colWidth(c, vals)
+    })
+    const total = base.reduce((a, b) => a + b, 0)
+    const target = Math.max(total, containerW)
+    if (base.length === 0 || target <= total) return base
+    // 等比放大至占满容器（floor 取整的余数补给最后一列，保证总和精确等于 target）
+    const scaled = base.map((w) => Math.floor((w * target) / total))
+    scaled[scaled.length - 1] += target - scaled.reduce((a, b) => a + b, 0)
+    return scaled
+  }, [columns, rows, containerW])
   const totalWidth = useMemo(() => widths.reduce((a, b) => a + b, 0), [widths])
 
   // 筛选：关键字对所有列做 contains 匹配
@@ -170,7 +187,8 @@ export function TableBlock({ content }: Props) {
       >
         <table
           className="border-collapse text-xs"
-          style={{ tableLayout: 'fixed', width: totalWidth, minWidth: '100%' }}
+          // width 已由 widths 等比放大至 ≥ 容器宽，禁止再用 min-width 触发 fixed 布局的二次分配
+          style={{ tableLayout: 'fixed', width: totalWidth }}
         >
           <thead className="sticky top-0 z-10">
             <tr className="bg-muted">
