@@ -30,7 +30,7 @@
   --chart-3: oklch(0.646 0.222 41.116);
   --chart-4: oklch(0.553 0.195 38.402);
   --chart-5: oklch(0.47 0.157 37.304);
-  --radius: 0.75rem;
+  --radius: 0.5rem;
   --sidebar: oklch(1 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.205 0 0);
@@ -211,7 +211,7 @@ html, body, #root {
     @apply size-9 p-0 text-foreground hover:bg-accent;
   }
   .btn-send {
-    @apply inline-flex size-[34px] items-center justify-center rounded-[10px] bg-primary text-primary-foreground transition-colors;
+    @apply inline-flex size-[34px] items-center justify-center rounded-md bg-primary text-primary-foreground transition-colors;
   }
   .btn-send:hover:not(:disabled) {
     @apply bg-primary/90;
@@ -219,7 +219,7 @@ html, body, #root {
 
   /* ---- 徽标（docs/UI设计规范.md 3.2） ---- */
   .badge {
-    @apply inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium;
+    @apply inline-flex items-center gap-1 whitespace-nowrap rounded-sm px-2 py-0.5 text-xs font-medium;
   }
   .badge-secondary {
     @apply bg-secondary text-secondary-foreground;
@@ -372,6 +372,15 @@ html, body, #root {
 .animate-pulse-dot { animation: pulse-dot 1.4s ease-in-out infinite; }
 .animate-slide-in-right { animation: slide-in-right 0.3s ease-out; }
 .animate-fade-in { animation: fade-in 0.2s ease-out; }
+
+/* 登录页品牌区装饰动画（缓慢漂移/悬浮，prefers-reduced-motion 时静止） */
+@keyframes dp-drift { 0%, 100% { transform: translate3d(0, 0, 0) scale(1); } 50% { transform: translate3d(28px, -20px, 0) scale(1.06); } }
+@keyframes dp-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+.dp-drift { animation: dp-drift 16s ease-in-out infinite; will-change: transform; }
+.dp-float { animation: dp-float 7s ease-in-out infinite; will-change: transform; }
+@media (prefers-reduced-motion: reduce) {
+  .dp-drift, .dp-float { animation: none; }
+}
 
 @layer base {
   * {

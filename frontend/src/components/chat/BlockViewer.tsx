@@ -202,7 +202,7 @@ export function BlockViewer({
               <button
                 key={it.text}
                 onClick={() => send(it.message || it.text)}
-                className="rounded-full border bg-background px-3 py-1 text-xs text-foreground hover:bg-accent"
+                className="rounded-md border bg-background px-3 py-1 text-xs text-foreground hover:bg-accent"
               >
                 {it.text}
               </button>

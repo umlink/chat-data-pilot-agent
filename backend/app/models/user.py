@@ -1,7 +1,7 @@
 import datetime
 import uuid
 
-from sqlalchemy import DateTime, ForeignKey, Index, String, func, text
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, func, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -42,6 +42,14 @@ class Session(Base):
         index=True,
     )
     title: Mapped[str] = mapped_column(String(255), nullable=False, default="新会话")
+    # 上下文压缩（契约 技术方案 4.8）：后台增量压缩的结构化摘要 + 水位线
+    context_summary: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    summary_upto: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    summary_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    summary_model: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    summary_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -71,6 +79,8 @@ class Message(Base):
     role: Mapped[str] = mapped_column(String(20), nullable=False)  # user / assistant / system
     blocks: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     metadata_: Mapped[dict] = mapped_column("metadata", JSONB, nullable=False, default=dict)
+    # 内容 token 数（落库时预估，供上下文预算与 token 统计；契约 技术方案 4.8）
+    tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True
     )

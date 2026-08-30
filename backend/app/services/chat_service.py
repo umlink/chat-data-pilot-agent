@@ -25,27 +25,33 @@ from sqlalchemy import select
 from app.agents.tools import TOOL_DEFINITIONS, ToolCtx, ToolEngine
 from app.core.database import SessionFactory
 from app.llm.base import build_llm_provider
+from app.llm.tokenizer import get_context_window, token_estimator
 from app.models.user import Message, Session
 from app.services.config_service import ConfigService
+from app.services.context_service import (
+    SUMMARY_MAX_TOKENS,
+    has_pending_compaction,
+    load_summary,
+    render_summary,
+    should_compact,
+)
 from app.services.data_service import DataService
 from app.services.log_service import LogService
+from app.services.task_service import TaskService
 
 logger = logging.getLogger("datapilot.chat")
 _log_service = LogService()
 
 DEFAULT_TITLES = {"新会话", "新对话", "新聊天"}
-HISTORY_ROUNDS = 10  # 最近 10 轮（20 条）进入上下文
+HISTORY_ROUNDS = 10  # 最近 10 轮（20 条）进入上下文（L2 原文层，契约 技术方案 4.8）
 MAX_TOOL_ROUNDS = 8  # Agent 循环上限（契约 4.1）
-CONTEXT_TOKEN_BUDGET = 8000  # 契约 4.4：schema + 历史总量控制在 8K token 内
+# 上下文预算不再硬编码 8K：由模型 context window 推导（见 stream()，契约 4.8）
+_SAFETY_MARGIN_RATIO = 0.10  # 预留安全余量：吸收工具调用回填与消息格式开销
+_OUTPUT_RESERVE = 4096  # max_tokens 未配置时的输出预留
 
 # 数据源 schema 注入只对单表结构注入的最大表数 / 单行描述长度（防超长 schema 挤占历史预算）
 SCHEMA_MAX_TABLES = 20
 SCHEMA_MAX_COLUMNS = 30
-
-
-def _estimate_tokens(text: str) -> int:
-    """粗略估算 token 数：中文约 1 字 ≈ 1 token，英文约 4 字符 ≈ 1 token，取中值兜底。"""
-    return max(1, (len(text) + 1) // 2)
 
 
 def _json_safe(value: Any) -> Any:
@@ -63,6 +69,15 @@ def _json_safe(value: Any) -> Any:
     if isinstance(value, (list, tuple)):
         return [_json_safe(v) for v in value]
     return value
+
+def _estimate_blocks_tokens(blocks: list[dict]) -> int:
+    """估算一条消息落库内容的 token 数（统计用，契约 4.8；口径 = text block 文本）。"""
+    text = ""
+    for b in blocks or []:
+        if b.get("type") == "text":
+            text += (b.get("content") or {}).get("text") or ""
+    return token_estimator.estimate("openai", "gpt-4o", text) if text else 0
+
 
 SYSTEM_PROMPT = (
     "你是 DataPilotAgent，一个专业的智能数据分析助手。用简洁、专业的中文回答。\n"
@@ -271,6 +286,7 @@ class ChatService:
                 role=role,
                 blocks=_json_safe(blocks),
                 metadata_=_json_safe(metadata or {}),
+                tokens=_estimate_blocks_tokens(blocks),  # 落库即算，供预算与 token 统计（4.8）
             )
             db.add(m)
             await db.commit()
@@ -533,28 +549,53 @@ class ChatService:
             system += await self._attachment_schema(session_id, attachments)
         if datasource_id:
             system += "\n本次请求指定了数据源，run_sql 时省略 datasource_id 即使用该数据源。"
-        messages: list[dict[str, Any]] = [{"role": "system", "content": system}]
-        # 历史按 8K token 预算裁剪：从最近往前，超预算的早期轮次截断/压缩为摘要（而非直接丢弃）
-        budget = max(1, CONTEXT_TOKEN_BUDGET - _estimate_tokens(system))
+
+        # 上下文预算（契约 技术方案 4.8）：由模型 context window 推导，不再硬编码 8K。
+        # budget 只约束「历史 + 摘要」段；system/schema 与输出预留、安全余量单独扣减。
+        model = str(llm_cfg.get("model") or "")
+        provider_name = str(llm_cfg.get("provider") or "openai")
+        max_tokens_out = int(llm_cfg.get("max_tokens") or _OUTPUT_RESERVE)
+        context_window = get_context_window(model, llm_cfg.get("context_window"))
+        system_tokens = token_estimator.estimate(provider_name, model, system)
+        budget = max(
+            1,
+            context_window - max_tokens_out - system_tokens - int(context_window * _SAFETY_MARGIN_RATIO),
+        )
+
+        # L2 最近原文：逐条累加，超预算从旧到新截断（余量 ≥64 token 时保留截断尾巴）
+        history_msgs: list[dict[str, Any]] = []
         used = 0
         cut = 0
         for i, msg in enumerate(history):
-            cost = _estimate_tokens(msg["content"])
+            cost = token_estimator.estimate(provider_name, model, msg["content"])
             if used + cost > budget:
                 room = budget - used
                 if room >= 64 and len(msg["content"]) > room * 2:
-                    messages.append({"role": msg["role"], "content": msg["content"][: room * 2] + "…（上下文已截断）"})
+                    history_msgs.append(
+                        {"role": msg["role"], "content": msg["content"][: room * 2] + "…（上下文已截断）"}
+                    )
                 cut = i + 1
                 break
-            messages.append(msg)
+            history_msgs.append(msg)
             used += cost
         else:
             cut = len(history)
-        # 更早轮次压缩为摘要（插在主 system 之后、最新历史之前，保留背景要点）
+
+        messages: list[dict[str, Any]] = [{"role": "system", "content": system}]
+        # L3 更早轮次启发式单行摘要（最旧背景，优先级低于 L1 结构化摘要）
         if cut < len(history):
-            summary = _summarize_history(history[cut:])
-            if summary:
-                messages.insert(1, {"role": "system", "content": summary})
+            fallback = _summarize_history(history[cut:])
+            if fallback:
+                messages.append({"role": "system", "content": fallback})
+        # L1 后台增量压缩的结构化摘要（预算内才注入，优先级最高）
+        summary_dict = await load_summary(session_id)
+        if summary_dict.get("rounds"):
+            summary_text = render_summary(summary_dict)
+            s_cost = token_estimator.estimate(provider_name, model, summary_text)
+            if s_cost <= SUMMARY_MAX_TOKENS and used + s_cost <= budget:
+                messages.append({"role": "system", "content": summary_text})
+                used += s_cost
+        messages.extend(history_msgs)
 
         try:
             max_rows = int((await self._config.get("system.query") or {}).get("max_query_rows", 1000))
@@ -661,6 +702,21 @@ class ChatService:
             )
         except Exception:  # 契约字段校验等异常不干扰对话主流程
             logger.exception("AI 用量日志写入失败（已忽略）", extra={"session_id": str(session_id)})
+
+        # 上下文压缩（契约 4.8）：无工具调用的轮次用真实 usage 校准预估乘子；
+        # 未压缩历史超阈值且无在途压缩任务时投递后台增量压缩。失败不影响对话主流程。
+        try:
+            if not tctx.tool_calls:
+                token_estimator.calibrate(provider_name, model, system_tokens + used, int(usage.prompt_tokens or 0))
+            if await should_compact(session_id) and not await has_pending_compaction(session_id):
+                await TaskService().create(
+                    type="context_compaction",
+                    session_id=str(session_id),
+                    params={"model": model, "session_id": str(session_id)},
+                )
+        except Exception as exc:
+            logger.warning("触发上下文压缩失败（已忽略）", extra={"session_id": str(session_id), "error": str(exc)[:200]})
+
         raw_text = "".join(parts)
         clean_text, suggestion_items = _extract_suggestions(raw_text)
         text_block["status"] = "completed"

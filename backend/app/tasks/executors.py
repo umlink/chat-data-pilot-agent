@@ -70,5 +70,16 @@ def register_file_parse_executor() -> None:
     EXECUTORS.setdefault("file_parse", file_parse_executor)
 
 
+def register_context_compaction_executor() -> None:
+    """注册上下文压缩执行器（契约 技术方案 4.8）。
+
+    同理不模块级注册：context_service 依赖 executors 无关但依赖 ConfigService/
+    build_llm_provider，为避免启动时序问题统一由 Worker 启动路径注册。
+    """
+    from app.services.context_service import context_compaction_executor
+
+    EXECUTORS.setdefault("context_compaction", context_compaction_executor)
+
+
 def get_executor(task_type: str):
     return EXECUTORS.get(task_type)

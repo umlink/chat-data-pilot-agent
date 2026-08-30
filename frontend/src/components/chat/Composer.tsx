@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { FileText, Loader2, Paperclip, Send } from 'lucide-react'
 import { useAttachments } from '@/hooks/useAttachments'
 import { useChatStore } from '@/store/chatStore'
+import { useDataSourceStore } from '@/store/dataSourceStore'
 import type { Template } from '@/types/template'
 import { DatasourcePicker } from './DatasourcePicker'
 import { TemplatePickerDialog } from './TemplatePickerDialog'
@@ -31,6 +32,9 @@ export function Composer({ sessionId, disabled, onSend }: Props) {
   const fileRef = useRef<HTMLInputElement>(null)
   const { uploading, error: uploadError, uploadFiles } = useAttachments()
   const selectedDs = useChatStore((s) => s.datasourceBySession[sessionId] ?? '')
+  const dsList = useDataSourceStore((s) => s.list)
+  // 选中数据源的快捷文案：横条展示，点击填入输入框（可编辑后发送）
+  const quickPrompts = dsList.find((d) => d.id === selectedDs)?.quick_prompts ?? []
 
   const submit = () => {
     const t = text.trim()
@@ -69,6 +73,25 @@ export function Composer({ sessionId, disabled, onSend }: Props) {
 
   return (
     <div className="shrink-0 border-t bg-background px-6 py-3 print:hidden">
+      {quickPrompts.length > 0 ? (
+        <div
+          role="group"
+          aria-label="快捷文案"
+          className="mb-1.5 flex items-center gap-1.5 overflow-x-auto pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
+          {quickPrompts.map((p) => (
+            <button
+              key={p}
+              onClick={() => setText(p)}
+              disabled={disabled}
+              title={p}
+              className="shrink-0 rounded-sm border border-input bg-background px-2.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:border-ring hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {p.length > 24 ? `${p.slice(0, 24)}…` : p}
+            </button>
+          ))}
+        </div>
+      ) : null}
       <div className="flex items-end gap-2 rounded-xl border border-input bg-background p-2 transition-shadow focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/15">
         <div className="flex items-center gap-0.5">
           <DatasourcePicker

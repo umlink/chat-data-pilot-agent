@@ -14,6 +14,8 @@ __pycache__/
 venv/
 backend/venv/
 backend/data/
+# APP_DATA_DIR 默认 ./data：从仓库根启动进程时生成的密钥/临时库也不得入库
+/data/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/

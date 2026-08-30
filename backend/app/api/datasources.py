@@ -167,6 +167,8 @@ async def update_datasource(
         ds.type = req.type
     if req.config is not None:
         ds.config = _merge_config(ds.config or {}, req.config)
+    if req.quick_prompts is not None:  # 整体替换；[]=清空（校验在 schema 层）
+        ds.quick_prompts = req.quick_prompts
     await db.commit()
     await db.refresh(ds)
     return ApiResponse(data=DatasourceOut.model_validate(ds), message="数据源已更新")

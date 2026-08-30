@@ -33,14 +33,14 @@ export function SourcesBlock({ content }: { content: { items: SourceItem[] } }) 
             onClick={() => setSql(it.sql ?? '')}
             aria-label={`查看查询 SQL：${it.label}`}
             title="点击查看查询语句"
-            className="inline-flex items-center rounded-full border bg-background px-2.5 py-0.5 text-[11px] text-foreground transition-colors hover:bg-accent"
+            className="inline-flex items-center rounded-sm border bg-background px-2.5 py-0.5 text-[11px] text-foreground transition-colors hover:bg-accent"
           >
             {inner}
           </button>
         ) : (
           <span
             key={it.label}
-            className="inline-flex items-center rounded-full border bg-muted/50 px-2.5 py-0.5 text-[11px] text-muted-foreground"
+            className="inline-flex items-center rounded-sm border bg-muted/50 px-2.5 py-0.5 text-[11px] text-muted-foreground"
           >
             {inner}
           </span>

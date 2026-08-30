@@ -15,6 +15,7 @@ from app.tasks.executors import (
     ExecCtx,
     TaskCancelled,
     get_executor,
+    register_context_compaction_executor,
     register_file_parse_executor,
 )
 from app.tasks.queue import TaskQueue
@@ -25,6 +26,8 @@ CHANNEL_PREFIX = "task:"
 
 # 注册 M3 附件解析执行器（executors 模块级不注册，见该函数注释：避免循环导入）
 register_file_parse_executor()
+# 注册上下文压缩执行器（契约 技术方案 4.8，同理由 Worker 启动路径注册）
+register_context_compaction_executor()
 
 
 class Worker:

@@ -37,6 +37,10 @@ interface Props {
   savable?: boolean
   /** 溯源会话 ID（收藏快照关联会话；会话删除后快照保留） */
   sessionId?: string
+  /** 是否渲染图表内部标题（看板卡片头部已展示标题，传 false 避免重复） */
+  showTitle?: boolean
+  /** 在看板等无标题场景为顶部 hover 工具条预留高度，使其不压盖图表绘图区域 */
+  reserveToolbarTop?: boolean
 }
 
 // 图表主色固定取语义 token（docs/UI设计规范.md 1.1 chart-1..5 橙色阶）
@@ -286,6 +290,7 @@ function HeatmapPanel({ content }: { content: ChartContent }) {
           width={width}
           height={height}
           role="img"
+          data-dp-chart-plot=""
           aria-label={content.title || '热力图'}
           className="block"
         >
@@ -461,21 +466,117 @@ function ChartFullscreenDialog({
   )
 }
 
+/** 把任意 CSS 颜色（含 oklch()/var() 已解析的现代色彩）栅格化后转成通用 rgb()。
+ * rgb() 在 standalone SVG / SVG-as-image 中兼容性最好；oklch 等脱离页面后可能不被解析。 */
+function toCssRgb(color: string): string {
+  if (!color || color === 'none' || color === 'transparent' || color.startsWith('url(')) return color
+  try {
+    const c = document.createElement('canvas')
+    c.width = c.height = 1
+    const ctx = c.getContext('2d')
+    if (!ctx) return color
+    ctx.fillStyle = '#000000'
+    ctx.fillRect(0, 0, 1, 1)
+    ctx.fillStyle = color
+    ctx.fillRect(0, 0, 1, 1)
+    const d = ctx.getImageData(0, 0, 1, 1).data
+    return `rgb(${d[0]}, ${d[1]}, ${d[2]})`
+  } catch {
+    return color
+  }
+}
+
+/**
+ * 图表导出自包含化：把外部 CSS（recharts 类名）计算出的样式内联到 SVG 元素上。
+ * 否则独立打开的 SVG 不加载页面 CSS，轴标签/文字/网格线会丢失样式而错乱。 */
+function inlineSvgStyles(root: SVGElement): SVGSVGElement {
+  const clone = root.cloneNode(true) as SVGSVGElement
+  clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
+  // 颜色相关属性：需从原始（挂载中）节点取计算值并转成独立文档可用的 rgb()，
+  // 否则 fill/stroke 仍是 var(--chart-*) 引用或 oklch() 等现代函数，脱离页面后无法解析。
+  const COLOR_PROPS = ['fill', 'stroke', 'stop-color', 'color']
+  const STYLE_PROPS = [
+    'fill-opacity',
+    'stroke-opacity',
+    'stroke-width',
+    'stroke-linecap',
+    'stroke-linejoin',
+    'stroke-dasharray',
+    'opacity',
+    'font-family',
+    'font-size',
+    'font-weight',
+    'font-style',
+    'text-anchor',
+    'letter-spacing',
+    'dominant-baseline',
+  ]
+  // 在「原始」节点上遍历计算样式（克隆节点脱离 DOM，CSS 变量 --chart-* 无法解析，取值会退回 var() 引用）
+  const originals = [root, ...root.querySelectorAll<SVGElement>('*')]
+  const clones = [clone, ...clone.querySelectorAll<SVGElement>('*')]
+  const count = Math.min(originals.length, clones.length)
+  for (let i = 0; i < count; i++) {
+    const cs = window.getComputedStyle(originals[i])
+    for (const p of COLOR_PROPS) {
+      const v = cs.getPropertyValue(p).trim()
+      if (!v || v === 'none' || v === 'transparent') continue
+      clones[i].setAttribute(p, toCssRgb(v))
+    }
+    for (const p of STYLE_PROPS) {
+      const v = cs.getPropertyValue(p).trim()
+      if (!v || v === 'none') continue
+      clones[i].setAttribute(p, v)
+    }
+  }
+  // 关键：导出尺寸必须沿用 SVG 自身的坐标系（width/height attribute 与 viewBox），
+  // 绝不能用 getBoundingClientRect 的 CSS 渲染尺寸覆盖——recharts 的内容坐标基于其自身
+  // viewBox（如 0 0 800 500）绘制，被覆盖为不同尺寸后视角框偏移，导出的区域就错位/只截一角。
+  const parseNum = (v: string | null): number | null => {
+    // 只接受纯数值字符串；"100%" 这类相对值不参与坐标换算，视为缺失
+    if (!v || !/^\d+(\.\d+)?$/.test(v.trim())) return null
+    const n = parseFloat(v)
+    return Number.isFinite(n) && n > 0 ? n : null
+  }
+  let w = parseNum(clone.getAttribute('width')) ?? 0
+  let h = parseNum(clone.getAttribute('height')) ?? 0
+  if (w <= 0 || h <= 0) {
+    // 回退：仅当 SVG 未定义数值宽高（如 width="100%"）时才取 CSS 渲染尺寸填数
+    const bbox = root.getBoundingClientRect()
+    w = bbox.width || 800
+    h = bbox.height || 400
+    clone.setAttribute('width', String(w))
+    clone.setAttribute('height', String(h))
+  }
+  // viewBox 优先沿用 SVG 自带（recharts 会写 0 0 w h）；缺失时才以自身宽高补齐
+  const vb = clone.getAttribute('viewBox')?.trim()
+  if (!vb) {
+    clone.setAttribute('viewBox', `0 0 ${w} ${h}`)
+  }
+  return clone
+}
+
+function triggerDownload(dataUrl: string, filename: string, revoke: boolean): void {
+  const a = document.createElement('a')
+  a.href = dataUrl
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  // blob URL 等需异步撤销（点击后即刻撤销在某些浏览器会失败）
+  window.setTimeout(() => revoke && URL.revokeObjectURL(dataUrl), 1000)
+}
+
 /** 把图表 SVG 位图化为 canvas（PNG/PDF 共用管道，2x 高清） */
 function svgToCanvas(svg: SVGElement, scale = 2): Promise<HTMLCanvasElement | null> {
   return new Promise((resolve) => {
-    const clone = svg.cloneNode(true) as SVGElement
-    clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
-    const bbox = svg.getBoundingClientRect()
-    const w = bbox.width || 800
-    const h = bbox.height || 400
-    clone.setAttribute('width', String(w))
-    clone.setAttribute('height', String(h))
+    const clone = inlineSvgStyles(svg)
     const svgStr = new XMLSerializer().serializeToString(clone)
     const blob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' })
     const url = URL.createObjectURL(blob)
     const img = new Image()
     img.onload = () => {
+      const w = clone.width.baseVal.value || 800
+      const h = clone.height.baseVal.value || 400
       const canvas = document.createElement('canvas')
       canvas.width = w * scale
       canvas.height = h * scale
@@ -501,48 +602,47 @@ function svgToCanvas(svg: SVGElement, scale = 2): Promise<HTMLCanvasElement | nu
   })
 }
 
+/** 在容器内精确定位图表绘图 SVG（而非工具栏上的 lucide 图标）。
+ * recharts 输出 <svg class="recharts-surface">；自定义热力图标记 data-dp-chart-plot。 */
+function findChartSvg(container: HTMLElement | null): SVGSVGElement | null {
+  if (!container) return null
+  return container.querySelector<SVGSVGElement>('svg.recharts-surface, svg[data-dp-chart-plot]')
+}
+
 /** 当前图表导出：SVG 直下 / PNG / PDF（jspdf） */
 function useChartExport(chartRef: React.RefObject<HTMLDivElement | null>, title: string) {
   const downloadSvg = () => {
-    const svg = chartRef.current?.querySelector('svg')
+    const svg = findChartSvg(chartRef.current)
     if (!svg) return
-    const clone = svg.cloneNode(true) as SVGElement
-    clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
-    const blob = new Blob([clone.outerHTML], { type: 'image/svg+xml;charset=utf-8' })
+    const clone = inlineSvgStyles(svg)
+    const blob = new Blob([new XMLSerializer().serializeToString(clone)], {
+      type: 'image/svg+xml;charset=utf-8',
+    })
     const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `${title}.svg`
-    a.click()
-    URL.revokeObjectURL(url)
+    triggerDownload(url, `${title}.svg`, true)
   }
 
   const downloadPng = async () => {
-    const svg = chartRef.current?.querySelector('svg')
+    const svg = findChartSvg(chartRef.current)
     if (!svg) return
     const canvas = await svgToCanvas(svg)
     if (!canvas) return
     canvas.toBlob((pngBlob) => {
       if (!pngBlob) return
       const url = URL.createObjectURL(pngBlob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `${title}.png`
-      a.click()
-      URL.revokeObjectURL(url)
+      triggerDownload(url, `${title}.png`, true)
     }, 'image/png')
   }
 
   const downloadPdf = async () => {
-    const svg = chartRef.current?.querySelector('svg')
+    const svg = findChartSvg(chartRef.current)
     if (!svg) return
     const canvas = await svgToCanvas(svg)
     if (!canvas) return
     // jspdf 体积较大，按需加载（仅首次点击 PDF 时拉取）
     const { jsPDF } = await import('jspdf')
-    const bbox = svg.getBoundingClientRect()
-    const w = bbox.width || 800
-    const h = bbox.height || 400
+    const w = canvas.width / 2
+    const h = canvas.height / 2
     const pdf = new jsPDF({
       orientation: w >= h ? 'landscape' : 'portrait',
       unit: 'px',
@@ -688,7 +788,8 @@ function ChartToolbar({
 }) {
   const { downloadSvg, downloadPng, downloadPdf } = useChartExport(chartRef, title)
   return (
-    <div className="absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+    // hover 工具条需浮在图表 svg 之上：svg 在 DOM 中更靠后且同为 auto 层级，会覆盖工具条导致点不到
+    <div className="absolute right-2 top-2 z-10 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
       {onSave && (
         <button
           onClick={onSave}
@@ -773,7 +874,7 @@ function ChartToolbar({
  * 支持：折线/柱状/饼/散点（recharts）+ 热力图（自定义 SVG）；
  * 右上角悬浮工具：设置（本地配置覆盖）/ PNG / SVG / PDF 导出。
  */
-export function ChartBlock({ content, savable = false, sessionId }: Props) {
+export function ChartBlock({ content, savable = false, sessionId, showTitle = true, reserveToolbarTop = false }: Props) {
   const chartRef = useRef<HTMLDivElement>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [sqlOpen, setSqlOpen] = useState(false)
@@ -824,8 +925,10 @@ export function ChartBlock({ content, savable = false, sessionId }: Props) {
   }
   return (
     <div className="relative w-full">
-      <div ref={chartRef} className="group relative w-full">
-        <div className="mb-3 text-[13px] font-semibold text-foreground">{effective.title ?? '图表'}</div>
+      <div ref={chartRef} className={cn('group relative w-full', reserveToolbarTop && 'pt-8')}>
+        {showTitle ? (
+          <div className="mb-3 text-[13px] font-semibold text-foreground">{effective.title ?? '图表'}</div>
+        ) : null}
         <ChartToolbar
           chartRef={chartRef}
           title={title}

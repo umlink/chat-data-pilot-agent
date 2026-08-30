@@ -56,7 +56,7 @@
 | 层级 | 值 |
 |------|-----|
 | 间距 | 4 / 6 / 8 / 12 / 16 / 20 / 24 / 32（px） |
-| 圆角 | sm 7 / md 10 / lg 12 / xl 17 / full 9999（基准 `--radius: 0.75rem`） |
+| 圆角 | sm 4.8 / md 6.4 / lg 8 / xl 11.2 / full 9999（基准 `--radius: 0.5rem`） |
 | 阴影 | sm `0 1px 2px rgb(0 0 0 / .04)`；md `0 4px 12px rgb(0 0 0 / .06)`；lg `-8px 0 24px rgb(0 0 0 / .06)`（抽屉） |
 
 > 视觉语言基准（对齐参考设计系统）：**浅灰画布 + 纯白卡片浮起**。`--background` 为浅灰（oklch 0.98），`--card` / `--sidebar` / `--popover` 为纯白，卡片靠 border 与底色差分层，不依赖重阴影。bento 卡片网格用于配置/日志/概览等次级页面；对话主界面保持三栏垂直流（见第 2 章）。
@@ -83,10 +83,10 @@
 | ghost | `h-9 px-3`，hover `bg-accent` | 顶栏操作、次操作 |
 | sm | `h-7 px-2.5 text-xs` | 行内 |
 | icon | `h-9 w-9` | 图标按钮 |
-| send | `h-[34px] w-[34px] rounded-[10px] bg-primary` | 发送 |
+| send | `h-[34px] w-[34px] rounded-md bg-primary` | 发送 |
 
 ### 3.2 徽标 `.badge`
-基准：`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium`。
+基准：`inline-flex items-center gap-1 rounded-sm px-2 py-0.5 text-xs font-medium`。
 | 变体 | 底色 |
 |------|------|
 | default | `bg-primary text-primary-foreground` |
@@ -148,7 +148,7 @@ Tabs（`h-11 text-sm`、active 底部 2px primary 线 + 600）；区块间距 24
 | progress | 进度条 + 步骤清单 | running 信息态/queued 脉冲 |
 | error | `bg-error-bg text-error border` | 可重试则展示重试按钮 |
 | insights | 列表，标题加粗 | 无 |
-| suggestions | 胶囊按钮（`rounded-full border`） | 点击发起新对话 |
+| suggestions | 圆角按钮（`rounded-md border`） | 点击发起新对话 |
 | attachment | 产物式小卡（上传/解析/就绪/失败状态） | 状态徽标 |
 
 ---
@@ -166,7 +166,7 @@ Tabs（`h-11 text-sm`、active 底部 2px primary 线 + 600）；区块间距 24
 1. **令牌即颜色**：禁止硬编码色值，一律用第 1 章语义令牌。状态一律用 `success / warning / error / info` 令牌，**不用**红绿任意色。
 2. **字号阶梯**：只能用 xs/sm/base/md/lg/xl 阶梯（1.2），或在代码块内使用更小的 10/11/12px（文本内容例外）。
 3. **间距阶梯**：4/6/8/12/16/20/24/32，禁止 1px 间距（border 除外）、禁止奇数间距。
-4. **圆角阶梯**：6/8/10/12/9999。
+4. **圆角阶梯**：5/6/8/11/9999。
 5. **语义化命名**：类名用 Tailwind 工具类；重复组件（按钮/徽标/表格/代码块）提取为 `@layer components` 类或共享组件，禁止跨文件复制样式。
 6. **可访问性**：交互元素 `aria-label`；`focus-visible` 可见 ring；最小可点区域 28px；颜色对比 ≥ 4.5:1。
 7. **明暗主题**：所有颜色来自令牌变量，暗色在 `.dark` 覆盖变量，不新增 magic 值。

@@ -144,7 +144,7 @@ export function ChatArea() {
                     forceScroll()
                     send(ex.prompt)
                   }}
-                  className="rounded-full border bg-background px-4 py-1.5 text-sm hover:bg-accent"
+                  className="rounded-md border bg-background px-4 py-1.5 text-sm hover:bg-accent"
                 >
                   {ex.text}
                 </button>

@@ -10,6 +10,7 @@ interface Props {
   onTest: (ds: DataSourceInfo) => void
   onPreview: (ds: DataSourceInfo) => void
   onSchema: (ds: DataSourceInfo) => void
+  onPrompts: (ds: DataSourceInfo) => void
   onEdit: (ds: DataSourceInfo) => void
   onDelete: (ds: DataSourceInfo) => void
 }
@@ -53,8 +54,17 @@ function StatusCell({ ds }: { ds: DataSourceInfo }) {
   )
 }
 
-/** 数据源列表表格：名称 / 类型 badge / 连接状态 / 更新时间 / 操作（测试、预览、Schema、编辑、删除）。 */
-export function DataSourceTable({ list, testMap, onTest, onPreview, onSchema, onEdit, onDelete }: Props) {
+/** 数据源列表表格：名称 / 类型 badge / 连接状态 / 更新时间 / 操作（测试、预览、Schema、文案、编辑、删除）。 */
+export function DataSourceTable({
+  list,
+  testMap,
+  onTest,
+  onPreview,
+  onSchema,
+  onPrompts,
+  onEdit,
+  onDelete,
+}: Props) {
   return (
     <div className="overflow-hidden rounded-lg border bg-card">
       <table className="w-full text-xs">
@@ -98,6 +108,9 @@ export function DataSourceTable({ list, testMap, onTest, onPreview, onSchema, on
                     </Button>
                     <Button variant="outline" size="sm" onClick={() => onSchema(ds)}>
                       Schema
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => onPrompts(ds)}>
+                      文案{ds.quick_prompts?.length ? `(${ds.quick_prompts.length})` : ''}
                     </Button>
                     <Button variant="ghost" size="sm" onClick={() => onEdit(ds)}>
                       编辑

@@ -8,6 +8,7 @@ import { useDataSourceStore, type DataSourceInfo } from '@/store/dataSourceStore
 import { type TestResult } from './constants'
 import { DataSourceFormDialog } from './DataSourceFormDialog'
 import { DataSourcePreviewDialog } from './DataSourcePreviewDialog'
+import { DatasourcePromptsDrawer } from './DatasourcePromptsDrawer'
 import { DataSourceSchemaDialog } from './DataSourceSchemaDialog'
 import { DataSourceTable, type TestState } from './DataSourceTable'
 
@@ -20,6 +21,7 @@ export function DataSourcePage() {
   const [editing, setEditing] = useState<DataSourceInfo | null>(null)
   const [previewDs, setPreviewDs] = useState<DataSourceInfo | null>(null)
   const [schemaDs, setSchemaDs] = useState<DataSourceInfo | null>(null)
+  const [promptsDs, setPromptsDs] = useState<DataSourceInfo | null>(null)
   const [deleteDs, setDeleteDs] = useState<DataSourceInfo | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState('')
@@ -143,6 +145,7 @@ export function DataSourcePage() {
             onTest={(ds) => void testConnection(ds)}
             onPreview={setPreviewDs}
             onSchema={setSchemaDs}
+            onPrompts={setPromptsDs}
             onEdit={openEdit}
             onDelete={(ds) => {
               setDeleteDs(ds)
@@ -164,6 +167,11 @@ export function DataSourcePage() {
 
       <DataSourcePreviewDialog ds={previewDs} onClose={() => setPreviewDs(null)} />
       <DataSourceSchemaDialog ds={schemaDs} onClose={() => setSchemaDs(null)} />
+      <DatasourcePromptsDrawer
+        ds={promptsDs}
+        onClose={() => setPromptsDs(null)}
+        onSaved={() => void load()}
+      />
 
       <Dialog
         open={deleteDs !== null}

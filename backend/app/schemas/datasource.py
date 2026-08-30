@@ -63,6 +63,22 @@ class DatasourceUpdate(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=100)
     type: DatasourceType | None = None
     config: dict[str, Any] | None = Field(None, description="增量配置")
+    quick_prompts: list[str] | None = Field(
+        None, description="快捷文案（整体替换；null=不修改，[]=清空）"
+    )
+
+    @field_validator("quick_prompts")
+    @classmethod
+    def _clean_prompts(cls, value: list[str] | None) -> list[str] | None:
+        if value is None:
+            return None
+        prompts = [p.strip() for p in value if isinstance(p, str) and p.strip()]
+        if len(prompts) > 10:
+            raise ValueError("快捷文案最多 10 条")
+        for p in prompts:
+            if len(p) > 100:
+                raise ValueError("单条快捷文案不能超过 100 字")
+        return prompts
 
 
 class DatasourceOut(BaseModel):
@@ -79,6 +95,8 @@ class DatasourceOut(BaseModel):
     last_checked_at: datetime.datetime | None = None
     last_error: str | None = None
     server_version: str | None = None
+    # 快捷文案：对话输入区选中该数据源时横条展示（最多 10 条）
+    quick_prompts: list[str] = Field(default_factory=list)
     created_at: datetime.datetime | None = None
     updated_at: datetime.datetime | None = None
 

@@ -11,6 +11,8 @@ export interface DataSourceInfo {
   last_checked_at?: string | null
   last_error?: string | null
   server_version?: string | null
+  /** 快捷文案：对话输入区选中该数据源时横条展示（最多 10 条） */
+  quick_prompts?: string[]
   created_at?: string | null
   updated_at?: string | null
 }
