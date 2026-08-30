@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactElement } from 'react'
 import { Navigate } from 'react-router-dom'
 import { getToken, verifySession } from '@/lib/api'
-import { Login } from '@/components/auth/Login'
+import { Login } from '@/pages/login/Login'
 
 type AuthState = 'checking' | 'authed' | 'guest'
 

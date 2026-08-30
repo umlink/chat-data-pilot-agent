@@ -2,7 +2,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { CONFIG_FIELDS, type DatasourceType } from './constants'
-import { MaskedInput } from './MaskedInput'
+import { MaskedInput } from '@/components/common/MaskedInput'
 
 interface Props {
   type: DatasourceType

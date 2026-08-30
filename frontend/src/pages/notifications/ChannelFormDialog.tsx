@@ -19,7 +19,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
-import { MaskedInput } from '@/components/datasource/MaskedInput'
+import { MaskedInput } from '@/components/common/MaskedInput'
 import { MASKED } from '@/types/config'
 import type { ChannelInfo, NotificationProvider } from '@/types/notification'
 

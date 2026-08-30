@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { Code, Database, Table2 } from 'lucide-react'
 import type { SourceItem } from '@/types/message'
-import { SqlQueryDialog } from './SqlQueryDialog'
+import { SqlQueryDialog } from '@/components/chat/SqlQueryDialog'
 
 function chipIcon(label: string): ReactNode {
   if (label.startsWith('数据源：')) return <Database size={12} />

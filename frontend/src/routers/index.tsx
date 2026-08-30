@@ -1,28 +1,28 @@
 import { Suspense, lazy } from 'react'
 import { Navigate, createBrowserRouter } from 'react-router-dom'
-import { ChatArea } from '@/components/chat/ChatArea'
-import { DataSourcePage } from '@/components/datasource/DataSourcePage'
-import { LogsPage } from '@/components/logs/LogsPage'
-import { TemplatesPage } from '@/components/template/TemplatesPage'
+import { ChatArea } from '@/pages/session/ChatArea'
+import { DataSourcePage } from '@/pages/datasources/DataSourcePage'
+import { LogsPage } from '@/pages/logs/LogsPage'
+import { TemplatesPage } from '@/pages/templates/TemplatesPage'
 import { AppShell } from '@/routers/AppShell'
 import { GuestOnly, RequireAuth } from '@/routers/guards'
 
 // 重页面（图表/表格/表单等较重组件）路由级懒加载
-const ConfigPage = lazy(() => import('@/components/config/ConfigPage').then((m) => ({ default: m.ConfigPage })))
+const ConfigPage = lazy(() => import('@/pages/config/ConfigPage').then((m) => ({ default: m.ConfigPage })))
 const SavedChartsPage = lazy(() =>
-  import('@/components/dashboard/SavedChartsPage').then((m) => ({ default: m.SavedChartsPage })),
+  import('@/pages/board/SavedChartsPage').then((m) => ({ default: m.SavedChartsPage })),
 )
-const ReportsPage = lazy(() => import('@/components/reports/ReportsPage').then((m) => ({ default: m.ReportsPage })))
+const ReportsPage = lazy(() => import('@/pages/reports/ReportsPage').then((m) => ({ default: m.ReportsPage })))
 const AutomationPage = lazy(() =>
-  import('@/components/automation/AutomationPage').then((m) => ({ default: m.AutomationPage })),
+  import('@/pages/automations/AutomationPage').then((m) => ({ default: m.AutomationPage })),
 )
 const NotificationChannelsPage = lazy(() =>
-  import('@/components/notification/NotificationChannelsPage').then((m) => ({
+  import('@/pages/notifications/NotificationChannelsPage').then((m) => ({
     default: m.NotificationChannelsPage,
   })),
 )
 const TokenStatsPage = lazy(() =>
-  import('@/components/stats/TokenStatsPage').then((m) => ({ default: m.TokenStatsPage })),
+  import('@/pages/stats/TokenStatsPage').then((m) => ({ default: m.TokenStatsPage })),
 )
 
 /**

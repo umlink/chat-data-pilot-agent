@@ -1,7 +1,7 @@
 # Logs
 logs
-# 取消对源码目录 src/components/logs/ 的误忽略（logs 裸模式会命中同名目录）
-!src/components/logs/
+# 取消对源码目录 src/pages/logs/ 的误忽略（logs 裸模式会命中同名目录）
+!src/pages/logs/
 *.log
 npm-debug.log*
 yarn-debug.log*

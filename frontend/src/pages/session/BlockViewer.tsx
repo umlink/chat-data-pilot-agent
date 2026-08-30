@@ -21,11 +21,11 @@ import { CodeBlock } from './CodeBlock'
 import { ConfirmationBlock } from './ConfirmationBlock'
 import { MarkdownText } from './MarkdownText'
 import { SourcesBlock } from './SourcesBlock'
-import { TableBlock } from './TableBlock'
+import { TableBlock } from '@/components/chat/TableBlock'
 
 // ChartBlock（recharts ~120KB gzip）仅在出现 chart block 时懒加载
 const ChartBlock = lazy(() =>
-  import('./ChartBlock').then((m) => ({ default: m.ChartBlock })),
+  import('@/components/chat/ChartBlock').then((m) => ({ default: m.ChartBlock })),
 )
 
 function ChartSkeleton() {
