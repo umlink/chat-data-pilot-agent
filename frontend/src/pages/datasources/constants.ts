@@ -53,10 +53,10 @@ const SSL_OPTIONS = [
 
 export const CONFIG_FIELDS: Record<DatasourceType, ConfigFieldDef[]> = {
   postgresql: [
-    { name: 'host', label: '主机', required: true, placeholder: 'localhost' },
+    { name: 'host', label: '主机', placeholder: 'localhost' },
     { name: 'port', label: '端口', type: 'number', defaultValue: '5432', placeholder: '5432' },
-    { name: 'database', label: '数据库名', required: true, placeholder: 'postgres' },
-    { name: 'user', label: '用户名', required: true, placeholder: 'postgres' },
+    { name: 'database', label: '数据库名', placeholder: 'postgres' },
+    { name: 'user', label: '用户名', placeholder: 'postgres' },
     { name: 'password', label: '密码', type: 'password' },
     { name: 'ssl', label: 'SSL', type: 'select', defaultValue: 'false', options: SSL_OPTIONS },
     {
@@ -66,10 +66,10 @@ export const CONFIG_FIELDS: Record<DatasourceType, ConfigFieldDef[]> = {
     },
   ],
   mysql: [
-    { name: 'host', label: '主机', required: true, placeholder: 'localhost' },
+    { name: 'host', label: '主机', placeholder: 'localhost' },
     { name: 'port', label: '端口', type: 'number', defaultValue: '3306', placeholder: '3306' },
-    { name: 'database', label: '数据库名', required: true, placeholder: 'mysql' },
-    { name: 'user', label: '用户名', required: true, placeholder: 'root' },
+    { name: 'database', label: '数据库名', placeholder: 'mysql' },
+    { name: 'user', label: '用户名', placeholder: 'root' },
     { name: 'password', label: '密码', type: 'password' },
     { name: 'ssl', label: 'SSL', type: 'select', defaultValue: 'false', options: SSL_OPTIONS },
   ],

@@ -113,12 +113,21 @@ export function DataSourceFormDialog({ open, editing, onOpenChange, onSaved }: P
       setError('请填写名称')
       return
     }
-    // 逐字段校验必填项，缺哪个提示哪个（不依赖 disabled 拦截）
-    for (const f of CONFIG_FIELDS[type]) {
-      if (f.required && !(form[f.name] ?? '').trim()) {
-        setError(`请填写${f.label}`)
-        return
-      }
+    // 按类型做「真正缺一不可」的校验（与后端建连逻辑对齐）：
+    // - sqlite：文件路径必填；
+    // - postgresql：DSN 与 database 至少其一（后端 _pg_kwargs 有 dsn 时忽略其它字段，host/user 有默认值）；
+    // - mysql：无 dsn 替代，database 必填（host/user 有默认值）。
+    if (type === 'sqlite' && !(form.path ?? '').trim()) {
+      setError('请填写文件路径')
+      return
+    }
+    if (type === 'postgresql' && !(form.dsn ?? '').trim() && !(form.database ?? '').trim()) {
+      setError('请填写数据库名或 DSN（至少其一）')
+      return
+    }
+    if (type === 'mysql' && !(form.database ?? '').trim()) {
+      setError('请填写数据库名')
+      return
     }
     setSaving(true)
     setError('')
