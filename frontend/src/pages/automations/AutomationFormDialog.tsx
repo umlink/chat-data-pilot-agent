@@ -163,6 +163,10 @@ export function AutomationFormDialog({
       setError('请选择数据源（定时任务必须绑定数据源）')
       return
     }
+    if (!datasourceItems[draft.datasourceId]) {
+      setError('所选数据源不存在或已被删除，请重新选择')
+      return
+    }
     if (!isValidCron(draft.cronExpression)) {
       setError('cron 格式不正确（如：0 9 * * 1-5）')
       return
@@ -177,6 +181,15 @@ export function AutomationFormDialog({
       (draft.notifyFailure && !draft.notifyFailureChannel)
     ) {
       setError('请先选择通知渠道')
+      return
+    }
+    // 通知渠道被删除后悬空引用：阻止带病提交（显示 UUID 无意义）
+    if (draft.notifySuccess && !channelItems[draft.notifySuccessChannel]) {
+      setError('所选成功通知渠道不存在或已被删除，请重新选择')
+      return
+    }
+    if (draft.notifyFailure && !channelItems[draft.notifyFailureChannel]) {
+      setError('所选失败通知渠道不存在或已被删除，请重新选择')
       return
     }
     if (draft.withChart) {

@@ -53,11 +53,13 @@ export function AutomationRunsDialog({
       .get<AutomationRunInfo[]>(`/automations/${automation.id}/runs?limit=20&offset=0`)
       .then((list) => {
         if (!alive) return
-        setRuns(list)
-        // 返回不足 limit 视为没有更多
-        setHasMore(list.length >= 20)
+        // 每页展示 limit 条；limit+1 探测余量仅用于判断是否还有更多
+        const shown = list.slice(0, 20)
+        setRuns(shown)
+        // 返回超过 limit 视为还有下一页
+        setHasMore(list.length > 20)
         // 默认选中最近一次成功运行（有结果快照可看），否则第一条
-        const first = list.find((r) => r.status === 'success' && r.result) ?? list[0]
+        const first = shown.find((r) => r.status === 'success' && r.result) ?? shown[0]
         setSelectedId(first?.id ?? null)
       })
       .catch((e) => {
@@ -75,9 +77,9 @@ export function AutomationRunsDialog({
       const next = await api.get<AutomationRunInfo[]>(
         `/automations/${automation.id}/runs?limit=20&offset=${runs.length}`,
       )
-      // 追加下一页；返回不足 limit 视为没有更多
-      setRuns((prev) => [...(prev ?? []), ...next])
-      setHasMore(next.length >= 20)
+      // 追加下一页（同样截取 limit 条，余量仅作 hasMore 信号）
+      setRuns((prev) => [...(prev ?? []), ...next.slice(0, 20)])
+      setHasMore(next.length > 20)
     } catch (e) {
       setError(e instanceof Error ? e.message : '加载更多失败')
     } finally {

@@ -18,17 +18,21 @@ const controllers = new Map<string, AbortController>()
 const taskStartedAt = new Map<string, number>()
 const LONG_TASK_MS = 10_000
 
-/** 登出/全局清理时取消所有进行中的 SSE 流 */
+/** 登出/全局清理时取消所有进行中的 SSE 流，并清除对应会话的 sending 状态（避免残留死锁） */
 export function cancelAllStreams(): void {
+  for (const [sessionId] of controllers.entries()) {
+    useChatStore.getState().setSending(sessionId, false)
+  }
   for (const ctrl of controllers.values()) ctrl.abort()
   controllers.clear()
   taskStartedAt.clear()
 }
 
-/** 取消指定会话的流（会话删除时调用） */
+/** 取消指定会话的流（会话删除时调用），并清除该会话 sending 状态 */
 export function cancelStream(sessionId: string): void {
   controllers.get(sessionId)?.abort()
   controllers.delete(sessionId)
+  useChatStore.getState().setSending(sessionId, false)
   taskStartedAt.clear()
 }
 
@@ -62,8 +66,8 @@ export function useChat() {
     const sessionId = st.sessionId
     if (!sessionId) return
     if (st.sending[sessionId]) return
-    // 草稿附件（attachment_id 列表）随消息发送
-    const attachmentIds = st.attachments.map((a) => a.attachment_id)
+    // 草稿附件（attachment_id 列表）随消息发送（仅取当前会话的附件，避免跨会话污染）
+    const attachmentIds = (st.attachmentsBySession[sessionId] ?? []).map((a) => a.attachment_id)
     // 会话级数据源上下文（'' 不传，走后端主数据源回退）
     const datasourceId = st.datasourceBySession[sessionId]
     st.setSending(sessionId, true)
@@ -210,7 +214,7 @@ export function useChat() {
           }
           s.setBlockStatus(sessionId, msgId, textBlockId, 'completed')
           s.setSending(sessionId, false)
-          s.clearAttachments()
+          s.clearAttachments(sessionId)
           // 回写服务端真实 message_id：保证后续 feedback / execute 按 id 操作可命中（此前用乐观 id 会 404）
           if (realId && realId !== msgId) s.replaceMessageId(sessionId, msgId, realId)
           break
@@ -260,16 +264,12 @@ export function useChat() {
       }
       if (!lastError) break // 正常完成（含服务端 error 事件，属业务结束）
       if (receivedAny || attempt === 1) {
-        // 已收到过事件（服务端已开始处理）或重连仍失败 → 按连接中断处理
+        // 已收到过事件（服务端已开始处理）或重连仍失败 → 按连接中断处理。
+        // 保留已生成的文本（标记为完成，不拼接错误信息）；独立追加可重试 error block，
+        // 避免错误文案污染部分生成结果。
         flushTokens()
         const s = useChatStore.getState()
-        const blocks = s.messagesBySession[sessionId]?.find((m) => m.id === msgId)?.blocks
-        const current = blocks?.find((b) => b.id === textBlockId)?.content.text ?? ''
-        s.patchBlock(sessionId, msgId, textBlockId, {
-          text: `${current}\n\n⚠️ 连接中断：${lastError.message}`,
-        })
-        s.setBlockStatus(sessionId, msgId, textBlockId, 'failed')
-        // 追加可重试 error block：让「重试」入口对所有失败路径一致可达（与服务端 error 事件同形状）
+        s.setBlockStatus(sessionId, msgId, textBlockId, 'completed')
         s.upsertBlock(sessionId, msgId, {
           id: uid(),
           type: 'error',

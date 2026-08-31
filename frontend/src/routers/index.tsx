@@ -1,3 +1,4 @@
+// oxlint-disable react/only-export-components -- 路由装配模块：本文件唯一导出是 router（非组件）；lazy 页面常量仅供模块内部使用，Fast Refresh 语义不适用于路由表
 import { Suspense, lazy } from 'react'
 import { Navigate, createBrowserRouter } from 'react-router-dom'
 import { ChatArea } from '@/pages/chat/ChatArea'

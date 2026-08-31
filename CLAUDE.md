@@ -117,6 +117,7 @@
 ### 5.1 工程
 - TS `strict`；路径别名 `@/` → `src/`（无 baseUrl，paths 相对 tsconfig）。类型错误不得绕过（禁止 `any` 泛滥；Block.content 用记录类型 + 按 type 断言）。
 - 包管理 `pnpm`；提交前必须过三关：`pnpm exec tsc -b`（无报错）、`pnpm exec oxlint src`（CLEAN）、`pnpm run build`（成功）。
+- oxlint 配置（`.oxlintrc.json`）：`rules-of-hooks` 为 error；`only-export-components` 为 warn；**`set-state-in-effect` / `incompatible-library` 已显式关闭**——二者为 React Compiler 时代启发式规则，对「弹窗打开时经 effect 初始化表单」「effect 内异步取数先置 loading」「@tanstack/react-virtual 的 useVirtualizer」等仓库内标准且正确的模式误报，关闭以保持告警高信噪比（0 errors 底线不变）。新增规则/恢复需说明理由。
 - 不要降级依赖锁版本；新增依赖需说明理由。
 
 ### 5.2 结构与组件

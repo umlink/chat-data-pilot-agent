@@ -136,6 +136,7 @@ export function SystemConfigTab({ config, setField }: Props) {
   )
 }
 
+// oxlint-disable-next-line react/only-export-components -- 共享常量函数（非组件），ConfigPage 复用
 export function makeSystemKeys(): string[] {
   return ['system.query', 'system.task', 'system.upload', 'system.session', 'system.sql', 'system.log']
 }

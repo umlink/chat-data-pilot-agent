@@ -227,6 +227,8 @@ async def list_report_runs(
     limit: int = Query(20, ge=1, le=100, description="返回条数上限"),
     offset: int = Query(0, ge=0, description="跳过条数（分页）"),
 ):
+    # limit+1 探测：多取 1 条供前端判断是否还有下一页（返回条数可能为 limit+1），
+    # 避免总条数为 limit 整数倍时前端需多点一次「加载更多」。
     await _get_owned_report(db, user, report_id)
     try:
         rid = UUID(report_id)
@@ -238,7 +240,7 @@ async def list_report_runs(
             .where(ReportRun.report_id == rid)
             .order_by(ReportRun.started_at.desc())
             .offset(offset)
-            .limit(limit)
+            .limit(limit + 1)
         )
     ).all()
     return ApiResponse(data=[ReportRunOut.model_validate(r) for r in runs])

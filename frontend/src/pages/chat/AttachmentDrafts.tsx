@@ -9,15 +9,15 @@ import { AttachmentStatusView } from './AttachmentBlock'
  * 单个草稿附件：轮询 GET /api/upload/{id}/status（2s）直到 ready/failed，回填解析状态；
  * 移除时调用后端删除（记录 + MinIO 对象 + 临时表），失败也先本地移除。
  */
-function DraftCard({ draft }: { draft: AttachmentContent }) {
+function DraftCard({ sessionId, draft }: { sessionId: string; draft: AttachmentContent }) {
   const updateAttachment = useChatStore((s) => s.updateAttachment)
   const removeAttachment = useChatStore((s) => s.removeAttachment)
   const [removing, setRemoving] = useState(false)
   const polling = draft.status === 'uploading' || draft.status === 'parsing'
 
   const onUpdate = useCallback(
-    (patch: Partial<AttachmentContent>) => updateAttachment(draft.attachment_id, patch),
-    [updateAttachment, draft.attachment_id],
+    (patch: Partial<AttachmentContent>) => updateAttachment(sessionId, draft.attachment_id, patch),
+    [updateAttachment, sessionId, draft.attachment_id],
   )
   useAttachmentPolling(draft.attachment_id, polling, onUpdate)
 
@@ -29,7 +29,7 @@ function DraftCard({ draft }: { draft: AttachmentContent }) {
     } catch {
       /* 删除失败不阻断：草稿区移除是本地动作，MinIO 对象由过期清理兜底 */
     } finally {
-      removeAttachment(draft.attachment_id)
+      removeAttachment(sessionId, draft.attachment_id)
     }
   }
 
@@ -49,14 +49,14 @@ function DraftCard({ draft }: { draft: AttachmentContent }) {
   )
 }
 
-/** 附件草稿区：Composer 上方右对齐的卡片式小面板（docs/UI设计规范.md 3.11 产物卡） */
-export function AttachmentDrafts() {
-  const attachments = useChatStore((s) => s.attachments)
+/** 附件草稿区：Composer 上方右对齐的卡片式小面板（docs/UI设计规范.md 3.11 产物卡），按会话隔离 */
+export function AttachmentDrafts({ sessionId }: { sessionId: string }) {
+  const attachments = useChatStore((s) => s.attachmentsBySession[sessionId] ?? [])
   if (attachments.length === 0) return null
   return (
     <div className="flex shrink-0 flex-col items-end gap-1.5 px-6 pb-1.5 print:hidden">
       {attachments.map((a) => (
-        <DraftCard key={a.attachment_id} draft={a} />
+        <DraftCard key={a.attachment_id} sessionId={sessionId} draft={a} />
       ))}
     </div>
   )

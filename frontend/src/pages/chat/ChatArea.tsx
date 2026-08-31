@@ -178,7 +178,7 @@ export function ChatArea() {
           />
         )}
       </div>
-      <AttachmentDrafts />
+      <AttachmentDrafts sessionId={sessionId} />
       <Composer
         sessionId={sessionId}
         disabled={sending}

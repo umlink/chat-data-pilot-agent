@@ -149,6 +149,11 @@ export function ReportFormDialog({ open, editing, datasources, onOpenChange, onS
       setError('请输入查询 SQL')
       return
     }
+    // 数据源可选（'' = 默认数据源），但被删除后悬空引用时阻止提交
+    if (draft.datasourceId && !datasourceItems[draft.datasourceId]) {
+      setError('所选数据源不存在或已被删除，请重新选择')
+      return
+    }
     if (draft.withChart) {
       if (!draft.dimension.trim()) {
         setError('请输入图表维度列')

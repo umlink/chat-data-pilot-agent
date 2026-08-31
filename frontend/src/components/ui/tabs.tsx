@@ -77,4 +77,5 @@ function TabsContent({ className, ...props }: TabsPrimitive.Panel.Props) {
   )
 }
 
+// oxlint-disable-next-line react/only-export-components -- shadcn variants 与组件同文件导出（官方模板）
 export { Tabs, TabsList, TabsTrigger, TabsContent, tabsListVariants }

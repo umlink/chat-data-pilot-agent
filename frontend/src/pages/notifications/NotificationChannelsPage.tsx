@@ -60,9 +60,10 @@ export function NotificationChannelsPage() {
   const loadLogs = useCallback(async () => {
     try {
       const data = await api.get<NotificationLogInfo[]>('/notifications/logs?limit=20&offset=0')
-      setLogs(data)
-      // 返回不足 limit 视为没有更多
-      setLogsHasMore(data.length >= 20)
+      // 每页展示 limit 条；limit+1 探测余量仅用于判断是否还有更多
+      setLogs(data.slice(0, 20))
+      // 返回超过 limit 视为还有下一页
+      setLogsHasMore(data.length > 20)
     } catch {
       setLogs([])
       setLogsHasMore(false)
@@ -76,9 +77,9 @@ export function NotificationChannelsPage() {
       const next = await api.get<NotificationLogInfo[]>(
         `/notifications/logs?limit=20&offset=${logs.length}`,
       )
-      // 追加下一页；返回不足 limit 视为没有更多
-      setLogs((prev) => [...(prev ?? []), ...next])
-      setLogsHasMore(next.length >= 20)
+      // 追加下一页（同样截取 limit 条，余量仅作 hasMore 信号）
+      setLogs((prev) => [...(prev ?? []), ...next.slice(0, 20)])
+      setLogsHasMore(next.length > 20)
     } catch {
       // 加载更多失败保持现有记录，按钮可重试
     } finally {

@@ -56,6 +56,7 @@ export function FieldRow({
 }
 
 /** 统一 input 样式（右侧控件） */
+// oxlint-disable-next-line react/only-export-components -- 共享表单工具函数（非组件），ConfigPage/LlmProvidersTab/SystemConfigTab 复用
 export function fieldInputCls(): string {
   return 'h-7 w-full rounded-md border border-input bg-input/20 px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30'
 }

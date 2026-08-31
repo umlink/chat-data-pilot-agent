@@ -9,8 +9,8 @@ interface ChatState {
   sessions: SessionInfo[]
   /** 每会话是否正在等待 SSE 回复（key=sessionId） */
   sending: Record<string, boolean>
-  /** 附件草稿（上传成功但未发送；发送成功或移除后清掉） */
-  attachments: AttachmentContent[]
+  /** 附件草稿（上传成功但未发送；发送成功或移除后清掉），按会话隔离避免跨会话污染 */
+  attachmentsBySession: Record<string, AttachmentContent[]>
   /** 会话级数据源选择（key=sessionId，'' = 未指定，走后端主数据源回退；契约 /chat/stream datasource_id） */
   datasourceBySession: Record<string, string>
 
@@ -39,10 +39,10 @@ interface ChatState {
   setBlockStatus: (sessionId: string, messageId: string, blockId: string, status: Block['status']) => void
   setMessageMetadata: (sessionId: string, messageId: string, patch: Record<string, unknown>) => void
 
-  addAttachment: (attachment: AttachmentContent) => void
-  updateAttachment: (attachmentId: string, patch: Partial<AttachmentContent>) => void
-  removeAttachment: (attachmentId: string) => void
-  clearAttachments: () => void
+  addAttachment: (sessionId: string, attachment: AttachmentContent) => void
+  updateAttachment: (sessionId: string, attachmentId: string, patch: Partial<AttachmentContent>) => void
+  removeAttachment: (sessionId: string, attachmentId: string) => void
+  clearAttachments: (sessionId: string) => void
 }
 
 function updateBlockInList(blocks: Block[], block: Block): Block[] {
@@ -60,7 +60,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   messagesBySession: {},
   sessions: [],
   sending: {},
-  attachments: [],
+  attachmentsBySession: {},
   datasourceBySession: {},
 
   setSessionId: (id) => set({ sessionId: id }),
@@ -194,14 +194,33 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }
     }),
 
-  addAttachment: (attachment) => set((s) => ({ attachments: [...s.attachments, attachment] })),
-  updateAttachment: (attachmentId, patch) =>
+  addAttachment: (sessionId, attachment) =>
     set((s) => ({
-      attachments: s.attachments.map((a) =>
-        a.attachment_id === attachmentId ? { ...a, ...patch } : a,
-      ),
+      attachmentsBySession: {
+        ...s.attachmentsBySession,
+        [sessionId]: [...(s.attachmentsBySession[sessionId] ?? []), attachment],
+      },
     })),
-  removeAttachment: (attachmentId) =>
-    set((s) => ({ attachments: s.attachments.filter((a) => a.attachment_id !== attachmentId) })),
-  clearAttachments: () => set({ attachments: [] }),
+  updateAttachment: (sessionId, attachmentId, patch) =>
+    set((s) => ({
+      attachmentsBySession: {
+        ...s.attachmentsBySession,
+        [sessionId]: (s.attachmentsBySession[sessionId] ?? []).map((a) =>
+          a.attachment_id === attachmentId ? { ...a, ...patch } : a,
+        ),
+      },
+    })),
+  removeAttachment: (sessionId, attachmentId) =>
+    set((s) => ({
+      attachmentsBySession: {
+        ...s.attachmentsBySession,
+        [sessionId]: (s.attachmentsBySession[sessionId] ?? []).filter(
+          (a) => a.attachment_id !== attachmentId,
+        ),
+      },
+    })),
+  clearAttachments: (sessionId) =>
+    set((s) => ({
+      attachmentsBySession: { ...s.attachmentsBySession, [sessionId]: [] },
+    })),
 }))

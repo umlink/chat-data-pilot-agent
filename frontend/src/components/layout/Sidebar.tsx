@@ -198,6 +198,7 @@ export function Sidebar() {
                     e.stopPropagation()
                     startRename(s)
                   }}
+                  onKeyDown={(e) => e.stopPropagation()}
                   aria-label="重命名会话"
                   className="flex size-[22px] items-center justify-center rounded-[4px] opacity-0 transition-opacity hover:bg-sidebar-accent group-hover:opacity-60 hover:opacity-100! focus-visible:opacity-100"
                 >
@@ -210,6 +211,7 @@ export function Sidebar() {
                   setDeleteError('')
                   setDeleteTarget(s)
                 }}
+                onKeyDown={(e) => e.stopPropagation()}
                 aria-label="删除会话"
                 className="flex size-[22px] items-center justify-center rounded-[4px] opacity-0 transition-opacity hover:bg-sidebar-accent group-hover:opacity-60 hover:opacity-100! focus-visible:opacity-100"
               >

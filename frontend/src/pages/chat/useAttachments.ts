@@ -202,7 +202,7 @@ export function useAttachments() {
           file_size: 0, // 解析完成后由状态接口回填
           status: 'uploading',
         }
-        useChatStore.getState().addAttachment(draft)
+        useChatStore.getState().addAttachment(sessionId, draft)
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : '上传失败')
