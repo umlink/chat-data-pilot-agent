@@ -180,12 +180,14 @@ Nginx 监听 80 端口：托管前端静态资源，并将 `/api/` 反向代理�
 
 ## 贡献
 
-欢迎 Issue 与 PR。提交前请确保：
+欢迎 Issue 与 PR。请阅读 [CONTRIBUTING.md](CONTRIBUTING.md) 了解开发约定与提交规范，并遵守 [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)。提交前请确保：
 
 ```bash
 # 前端三关（类型 / lint / 构建）
 cd frontend && pnpm exec tsc -b && pnpm exec oxlint src && pnpm run build
 ```
+
+安全问题请通过 [SECURITY.md](SECURITY.md) 私有上报，勿在 Issue 中公开。
 
 ## License
 

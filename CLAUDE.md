@@ -8,7 +8,7 @@
 ## 1. 项目结构与分层
 
 ```
-/Users/krlin/agents/ChatDataPilotAgent
+（仓库根目录）
 ├── docs/              产品与契约文档（PRD / 技术方案 / Block协议 / UI规范）
 ├── backend/           后端（FastAPI）
 │   ├── app/
