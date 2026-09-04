@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { Loader2, X } from 'lucide-react'
 import { removeAttachmentRemote, useAttachmentPolling } from './useAttachments'
 import { useChatStore } from '@/store/chatStore'
@@ -51,7 +51,11 @@ function DraftCard({ sessionId, draft }: { sessionId: string; draft: AttachmentC
 
 /** 附件草稿区：Composer 上方右对齐的卡片式小面板（docs/UI设计规范.md 3.11 产物卡），按会话隔离 */
 export function AttachmentDrafts({ sessionId }: { sessionId: string }) {
-  const attachments = useChatStore((s) => s.attachmentsBySession[sessionId] ?? [])
+  // selector 必须返回稳定引用，不能用 `?? []`（每次 getSnapshot 新数组 →
+  // useSyncExternalStore 判定快照变化 → 无限重渲染，React 抛 Maximum update depth
+  // exceeded）。与 ChatArea 的 messagesBySession 同一坑位，兜底数组放 useMemo。
+  const rawAttachments = useChatStore((s) => s.attachmentsBySession[sessionId])
+  const attachments = useMemo(() => rawAttachments ?? [], [rawAttachments])
   if (attachments.length === 0) return null
   return (
     <div className="flex shrink-0 flex-col items-end gap-1.5 px-6 pb-1.5 print:hidden">
